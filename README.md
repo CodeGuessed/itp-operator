@@ -2,7 +2,7 @@
 
 Shift-aware recovery operating system for a 42-week integrated training program. PWA installable on iOS via Safari Add to Home Screen.
 
-**Live:** https://FlyinL0w.github.io/itp-operator/
+**Live:** https://CodeGuessed.github.io/itp-operator/
 
 ---
 
@@ -37,11 +37,11 @@ You need a Client ID so the app can read your Google Calendar shift events.
    - Name: `ITP Operator`
    - Under **Authorized JavaScript origins**, add:
      ```
-     https://FlyinL0w.github.io
+     https://CodeGuessed.github.io
      ```
    - Under **Authorized redirect URIs**, add:
      ```
-     https://FlyinL0w.github.io/itp-operator/
+     https://CodeGuessed.github.io/itp-operator/
      ```
    - Click **Create**
 6. Copy the **Client ID** (format: `123456789-abc.apps.googleusercontent.com`)
@@ -50,7 +50,7 @@ You need a Client ID so the app can read your Google Calendar shift events.
 
 ## First-Run Setup
 
-1. Open the app: https://FlyinL0w.github.io/itp-operator/
+1. Open the app: https://CodeGuessed.github.io/itp-operator/
 2. Tap **Settings** (bottom nav)
 3. Enter your **Anthropic API key** → Save
 4. Paste your **Google OAuth Client ID** → tap **Connect Google Calendar**
@@ -66,7 +66,7 @@ You need a Client ID so the app can read your Google Calendar shift events.
 Web Push notifications on iOS require the app to be installed as a PWA (iOS 16.4+):
 
 1. Open **Safari** on your iPhone
-2. Navigate to: `https://FlyinL0w.github.io/itp-operator/`
+2. Navigate to: `https://CodeGuessed.github.io/itp-operator/`
 3. Tap the **Share** button (box with arrow pointing up)
 4. Scroll down and tap **Add to Home Screen**
 5. Tap **Add** (top right)

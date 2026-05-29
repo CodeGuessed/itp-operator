@@ -257,7 +257,7 @@ export default function Settings({ appState }) {
 
       {/* App info */}
       <div style={{ padding: '8px 0', fontSize: '0.7rem', color: 'var(--text2)', fontFamily: 'Space Mono, monospace' }}>
-        ITP Operator v1.0 · FlyinL0w · 42-week program from 2026-05-27
+        ITP Operator v1.0 · CodeGuessed · 42-week program from 2026-05-27
       </div>
     </div>
   );
