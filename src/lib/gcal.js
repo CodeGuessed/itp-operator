@@ -1,10 +1,17 @@
 // lib/gcal.js — Google Calendar OAuth (PKCE / authorization code flow)
 
 const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly'
-const REDIRECT_URI = `${window.location.origin}/itp-operator/`
 const CACHE_KEY = 'itp_gcal_cache'
 const CACHE_TTL = 6 * 60 * 60 * 1000 // 6 hours
 const PKCE_KEY = 'itp_pkce_verifier'
+
+// Computed once at import — must match the registered redirect URI exactly
+export const REDIRECT_URI = (() => {
+  const { origin, pathname } = window.location
+  // Normalise to the app root regardless of current path
+  const base = pathname.startsWith('/itp-operator') ? '/itp-operator/' : '/'
+  return origin + base
+})()
 
 export function getGCalClientId() {
   try { return JSON.parse(localStorage.getItem('itp_settings'))?.gcalClientId || '' } catch { return '' }
@@ -12,72 +19,82 @@ export function getGCalClientId() {
 
 // ── PKCE helpers ──────────────────────────────────────────────────────────────
 
-function randomBase64url(byteLength = 32) {
-  const buf = new Uint8Array(byteLength)
-  crypto.getRandomValues(buf)
-  return btoa(String.fromCharCode(...buf))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+function generateVerifier() {
+  const arr = new Uint8Array(32)
+  crypto.getRandomValues(arr)
+  // base64url, no padding — valid chars only, length always 43
+  return btoa(Array.from(arr, b => String.fromCharCode(b)).join(''))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-async function sha256Base64url(plain) {
-  const data = new TextEncoder().encode(plain)
-  const digest = await crypto.subtle.digest('SHA-256', data)
-  return btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+async function deriveChallenge(verifier) {
+  const encoded = new TextEncoder().encode(verifier)
+  const digest = await crypto.subtle.digest('SHA-256', encoded)
+  return btoa(Array.from(new Uint8Array(digest), b => String.fromCharCode(b)).join(''))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-// ── Auth URL (async — must await) ─────────────────────────────────────────────
+// ── Auth URL (async — must await in caller) ───────────────────────────────────
 
 export async function buildAuthUrl(clientId) {
-  const verifier = randomBase64url(32)
-  const challenge = await sha256Base64url(verifier)
+  const verifier = generateVerifier()
+  const challenge = await deriveChallenge(verifier)
   sessionStorage.setItem(PKCE_KEY, verifier)
 
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: REDIRECT_URI,
-    response_type: 'code',
-    scope: SCOPES,
-    code_challenge: challenge,
-    code_challenge_method: 'S256',
-    access_type: 'online',
-    prompt: 'select_account',
-  })
-  return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
+  // Build manually to avoid double-encoding of base64url chars by URLSearchParams
+  const qs = [
+    `client_id=${encodeURIComponent(clientId)}`,
+    `redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
+    `response_type=code`,
+    `scope=${encodeURIComponent(SCOPES)}`,
+    `code_challenge=${challenge}`,           // already URL-safe, do not encode again
+    `code_challenge_method=S256`,
+    `prompt=select_account`,
+  ].join('&')
+
+  return `https://accounts.google.com/o/oauth2/v2/auth?${qs}`
 }
 
-// ── Callback parsing (code lands in query string, not hash) ───────────────────
+// ── Callback parsing — code in ?code=, error in ?error= ──────────────────────
 
 export function parseCodeFromUrl() {
   const params = new URLSearchParams(window.location.search)
+  const error = params.get('error')
+  if (error) {
+    history.replaceState(null, '', window.location.pathname)
+    throw new Error(`Google OAuth error: ${error}`)
+  }
   const code = params.get('code')
   if (!code) return null
   history.replaceState(null, '', window.location.pathname)
   return code
 }
 
-// ── Token exchange (PKCE — no client_secret required for public clients) ──────
+// ── Token exchange — PKCE, no client_secret required ─────────────────────────
 
 export async function exchangeCodeForToken(code, clientId) {
   const verifier = sessionStorage.getItem(PKCE_KEY)
   sessionStorage.removeItem(PKCE_KEY)
   if (!verifier) throw new Error('PKCE verifier missing — restart the auth flow.')
 
+  const body = new URLSearchParams({
+    code,
+    client_id: clientId,
+    redirect_uri: REDIRECT_URI,
+    grant_type: 'authorization_code',
+    code_verifier: verifier,
+  })
+
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      code,
-      client_id: clientId,
-      redirect_uri: REDIRECT_URI,
-      grant_type: 'authorization_code',
-      code_verifier: verifier,
-    }),
+    body: body.toString(),
   })
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.error_description || `Token exchange failed: ${res.status}`)
+    // Surface the raw Google error for diagnosis
+    throw new Error(err.error_description || err.error || `Token exchange ${res.status}`)
   }
 
   const data = await res.json()
@@ -93,7 +110,7 @@ export async function exchangeCodeForToken(code, clientId) {
 
 export function isTokenValid(token) {
   if (!token?.access_token) return false
-  return Date.now() < (token.expires_at - 60000) // 1min buffer
+  return Date.now() < (token.expires_at - 60000)
 }
 
 // ── Calendar fetch ────────────────────────────────────────────────────────────
@@ -101,7 +118,7 @@ export function isTokenValid(token) {
 export async function fetchCalendarEvents(accessToken, daysAhead = 14) {
   const now = new Date()
   const future = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000)
-  const past = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const past   = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000)
 
   const params = new URLSearchParams({
     timeMin: past.toISOString(),
@@ -116,8 +133,7 @@ export async function fetchCalendarEvents(accessToken, daysAhead = 14) {
     { headers: { Authorization: `Bearer ${accessToken}` } }
   )
   if (!res.ok) throw new Error(`GCal API error: ${res.status}`)
-  const data = await res.json()
-  return data.items || []
+  return (await res.json()).items || []
 }
 
 // ── Event cache ───────────────────────────────────────────────────────────────

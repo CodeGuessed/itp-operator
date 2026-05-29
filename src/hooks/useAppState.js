@@ -24,14 +24,20 @@ export function useAppState() {
   const today = new Date().toISOString().slice(0, 10)
   const programPosition = getProgramPosition()
 
-  // Handle GCal PKCE callback — code lands in ?code= query param
+  // Handle GCal PKCE callback — ?code= on success, ?error= on failure
   useEffect(() => {
-    const code = parseCodeFromUrl()
+    let code
+    try {
+      code = parseCodeFromUrl()
+    } catch (e) {
+      // Google returned ?error=... — surface it so the user sees what went wrong
+      setGcalError(e.message)
+      return
+    }
     if (!code) return
 
-    const currentSettings = storage.getSettings()
-    const clientId = currentSettings.gcalClientId
-    if (!clientId) { setGcalError('Client ID missing — reconnect in Settings.'); return }
+    const clientId = storage.getSettings().gcalClientId
+    if (!clientId) { setGcalError('Client ID missing — re-enter it in Settings.'); return }
 
     setGcalLoading(true)
     exchangeCodeForToken(code, clientId)
@@ -42,11 +48,11 @@ export function useAppState() {
         storage.saveSettings(s)
         setSettingsState(s)
       })
-      .catch(e => setGcalError(`Auth failed: ${e.message}`))
+      .catch(e => setGcalError(`Token exchange failed: ${e.message}`))
       .finally(() => setGcalLoading(false))
   }, [])
 
-  // Load GCal events when token changes or on mount
+  // Load GCal events when token is available
   useEffect(() => {
     const cached = getCachedEvents()
     if (cached?.length) { setGcalEvents(cached); return }
@@ -70,10 +76,10 @@ export function useAppState() {
     if (gcalToken && isTokenValid(gcalToken)) loadGcalEvents(gcalToken)
   }, [gcalToken, loadGcalEvents])
 
-  const todayShift = getShiftType(gcalEvents, today)
+  const todayShift  = getShiftType(gcalEvents, today)
   const tomorrowShift = getShiftType(gcalEvents, new Date(Date.now() + 86400000).toISOString().slice(0, 10))
 
-  const saveSettings = useCallback((s) => { storage.saveSettings(s); setSettingsState(s) }, [])
+  const saveSettings  = useCallback((s) => { storage.saveSettings(s);  setSettingsState(s)  }, [])
   const saveBaselines = useCallback((b) => { storage.saveBaselines(b); setBaselinesState(b) }, [])
 
   const saveCheckin = useCallback((entry) => {

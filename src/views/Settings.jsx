@@ -1,34 +1,44 @@
 import React, { useState } from 'react'
-import { buildAuthUrl, isTokenValid } from '../lib/gcal.js'
+import { buildAuthUrl, isTokenValid, REDIRECT_URI } from '../lib/gcal.js'
 import { storage } from '../lib/storage.js'
 
 const SHIFT_NOTIF_LABELS = [
-  { key: 'day',    label: 'DAY shift alarm'    },
-  { key: 'night',  label: 'NIGHT shift alarm'  },
-  { key: 'cshift', label: 'C-SHIFT alarm'      },
-  { key: 'off',    label: 'OFF day alarm'       },
+  { key: 'day',    label: 'DAY shift alarm'   },
+  { key: 'night',  label: 'NIGHT shift alarm' },
+  { key: 'cshift', label: 'C-SHIFT alarm'     },
+  { key: 'off',    label: 'OFF day alarm'      },
 ]
 
 export default function Settings({ appState }) {
-  const { settings, saveSettings, baselines, saveBaselines, gcalToken } = appState
+  const { settings, saveSettings, baselines, saveBaselines, gcalToken, gcalError } = appState
 
-  const [anthropicKey, setAnthropicKey] = useState(settings.anthropicKey || '')
-  const [gcalClientId, setGcalClientId] = useState(settings.gcalClientId || '')
-  const [localBaselines, setLocalBaselines] = useState({ ...baselines })
-  const [notifTimes, setNotifTimes] = useState({ ...settings.notificationTimes })
-  const [clearConfirm, setClearConfirm] = useState(false)
-  const [saveMsg, setSaveMsg] = useState('')
+  const [anthropicKey,  setAnthropicKey]  = useState(settings.anthropicKey  || '')
+  const [gcalClientId,  setGcalClientId]  = useState(settings.gcalClientId  || '')
+  const [localBaselines,setLocalBaselines]= useState({ ...baselines })
+  const [notifTimes,    setNotifTimes]    = useState({ ...settings.notificationTimes })
+  const [clearConfirm,  setClearConfirm]  = useState(false)
+  const [saveMsg,       setSaveMsg]       = useState('')
+  const [authUrlPreview,setAuthUrlPreview]= useState('')
 
   const gcalConnected = settings.gcalConnected && isTokenValid(gcalToken)
 
-  function flash(msg = 'Saved') { setSaveMsg(msg); setTimeout(() => setSaveMsg(''), 2000) }
+  function flash(msg = 'Saved') { setSaveMsg(msg); setTimeout(() => setSaveMsg(''), 2500) }
 
   function handleSaveApiKey() { saveSettings({ ...settings, anthropicKey }); flash('API key saved') }
 
   async function handleConnectGcal() {
-    if (!gcalClientId.trim()) { alert('Enter a Google OAuth Client ID first.'); return }
-    saveSettings({ ...settings, gcalClientId })
-    window.location.href = await buildAuthUrl(gcalClientId.trim())
+    const id = gcalClientId.trim()
+    if (!id) { alert('Enter a Google OAuth Client ID first.'); return }
+    saveSettings({ ...settings, gcalClientId: id })
+    const url = await buildAuthUrl(id)
+    window.location.href = url
+  }
+
+  async function handlePreviewAuthUrl() {
+    const id = gcalClientId.trim()
+    if (!id) { alert('Enter a Client ID first.'); return }
+    const url = await buildAuthUrl(id)
+    setAuthUrlPreview(url)
   }
 
   function handleDisconnectGcal() {
@@ -55,15 +65,15 @@ export default function Settings({ appState }) {
 
   function handleExport() {
     const data = {
-      checkins:  storage.getDailyCheckins(),
-      weeklies:  storage.getWeeklyReviews(),
-      baselines: storage.getBaselines(),
-      settings:  { ...storage.getSettings(), anthropicKey: '[redacted]' },
+      checkins:   storage.getDailyCheckins(),
+      weeklies:   storage.getWeeklyReviews(),
+      baselines:  storage.getBaselines(),
+      settings:   { ...storage.getSettings(), anthropicKey: '[redacted]' },
       exportedAt: new Date().toISOString(),
     }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
     a.href = url
     a.download = `itp-export-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
@@ -109,12 +119,21 @@ export default function Settings({ appState }) {
       {/* Google Calendar */}
       <div className="card">
         <div className="card-title">Google Calendar</div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <span className={`status-dot ${gcalConnected ? 'green' : 'red'}`} />
           <span style={{ fontSize: '0.8rem', fontFamily: 'Space Mono, monospace' }}>
             {gcalConnected ? 'Connected' : 'Disconnected'}
           </span>
         </div>
+
+        {/* Show any OAuth error from callback */}
+        {gcalError && (
+          <div style={{ padding: '8px 10px', border: '1px solid var(--red)', color: 'var(--red)', fontSize: '0.75rem', marginBottom: 12, fontFamily: 'Space Mono, monospace' }}>
+            {gcalError}
+          </div>
+        )}
+
         <div className="input-group">
           <label className="input-label">OAuth 2.0 Client ID</label>
           <input
@@ -122,23 +141,51 @@ export default function Settings({ appState }) {
             className="input-field"
             value={gcalClientId}
             onChange={e => setGcalClientId(e.target.value)}
-            placeholder="123456789.apps.googleusercontent.com"
+            placeholder="123456789-abc.apps.googleusercontent.com"
             autoComplete="off"
             spellCheck={false}
           />
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+
+        {/* Redirect URI — must match Google Cloud Console exactly */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text2)', marginBottom: 4 }}>
+            Register this exact Redirect URI in Google Cloud Console
+          </div>
+          <div
+            style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.7rem', color: 'var(--accent)', padding: '6px 8px', background: 'var(--surface2)', border: '1px solid var(--border)', wordBreak: 'break-all', cursor: 'pointer' }}
+            onClick={() => navigator.clipboard?.writeText(REDIRECT_URI).then(() => flash('Copied!'))}
+            title="Tap to copy"
+          >
+            {REDIRECT_URI}
+          </div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text2)', marginTop: 3 }}>
+            Tap to copy · Also add <span className="mono" style={{ color: 'var(--text2)' }}>{window.location.origin}</span> to Authorized JavaScript Origins
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
           <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleConnectGcal}>
-            {gcalConnected ? 'Reconnect GCal' : 'Connect Google Calendar'}
+            {gcalConnected ? 'Reconnect' : 'Connect Google Calendar'}
           </button>
           {gcalConnected && (
             <button className="btn btn-danger" style={{ flex: 1 }} onClick={handleDisconnectGcal}>Disconnect</button>
           )}
         </div>
-        <div style={{ marginTop: 8, fontSize: '0.7rem', color: 'var(--text2)' }}>
-          Redirect URI to add in Google Cloud Console:<br />
-          <span className="mono" style={{ fontSize: '0.65rem', color: 'var(--accent)' }}>{window.location.origin}/itp-operator/</span>
-        </div>
+
+        {/* Auth URL preview for troubleshooting */}
+        <button
+          className="btn btn-full"
+          style={{ fontSize: '0.7rem', minHeight: 36, color: 'var(--text2)', borderColor: 'var(--border)' }}
+          onClick={handlePreviewAuthUrl}
+        >
+          Preview Auth URL (troubleshoot)
+        </button>
+        {authUrlPreview && (
+          <div style={{ marginTop: 8, padding: '8px', background: 'var(--surface2)', border: '1px solid var(--border)', fontSize: '0.6rem', fontFamily: 'Space Mono, monospace', wordBreak: 'break-all', color: 'var(--text2)' }}>
+            {authUrlPreview}
+          </div>
+        )}
       </div>
 
       {/* Baselines */}
@@ -201,9 +248,7 @@ export default function Settings({ appState }) {
           {clearConfirm ? 'Tap Again to Confirm — Cannot Be Undone' : 'Clear All Data'}
         </button>
         {clearConfirm && (
-          <div style={{ marginTop: 6, fontSize: '0.75rem', color: 'var(--red)' }}>
-            Deletes all logs, settings, and history.
-          </div>
+          <div style={{ marginTop: 6, fontSize: '0.75rem', color: 'var(--red)' }}>Deletes all logs, settings, and history.</div>
         )}
       </div>
 
