@@ -1,7 +1,14 @@
 // hooks/useAppState.js
 import { useState, useEffect, useCallback } from 'react'
 import { storage } from '../lib/storage.js'
-import { parseTokenFromHash, isTokenValid, fetchCalendarEvents, setCachedEvents, getCachedEvents } from '../lib/gcal.js'
+import {
+  parseCodeFromUrl,
+  exchangeCodeForToken,
+  isTokenValid,
+  fetchCalendarEvents,
+  setCachedEvents,
+  getCachedEvents,
+} from '../lib/gcal.js'
 import { getProgramPosition, getShiftType } from '../lib/program.js'
 
 export function useAppState() {
@@ -17,22 +24,29 @@ export function useAppState() {
   const today = new Date().toISOString().slice(0, 10)
   const programPosition = getProgramPosition()
 
-  // Handle GCal OAuth redirect
+  // Handle GCal PKCE callback — code lands in ?code= query param
   useEffect(() => {
-    const token = parseTokenFromHash()
-    if (token) {
-      storage.saveGCalToken(token)
-      setGcalTokenState(token)
-      window.history.replaceState(null, '', window.location.pathname)
-      // Save gcalConnected in settings
-      const s = storage.getSettings()
-      s.gcalConnected = true
-      storage.saveSettings(s)
-      setSettingsState(s)
-    }
+    const code = parseCodeFromUrl()
+    if (!code) return
+
+    const currentSettings = storage.getSettings()
+    const clientId = currentSettings.gcalClientId
+    if (!clientId) { setGcalError('Client ID missing — reconnect in Settings.'); return }
+
+    setGcalLoading(true)
+    exchangeCodeForToken(code, clientId)
+      .then(token => {
+        storage.saveGCalToken(token)
+        setGcalTokenState(token)
+        const s = { ...storage.getSettings(), gcalConnected: true }
+        storage.saveSettings(s)
+        setSettingsState(s)
+      })
+      .catch(e => setGcalError(`Auth failed: ${e.message}`))
+      .finally(() => setGcalLoading(false))
   }, [])
 
-  // Load GCal events on mount and when token changes
+  // Load GCal events when token changes or on mount
   useEffect(() => {
     const cached = getCachedEvents()
     if (cached?.length) { setGcalEvents(cached); return }

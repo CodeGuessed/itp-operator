@@ -16,7 +16,7 @@ Shift-aware recovery operating system for a 42-week integrated training program.
 
 ## Google Cloud Console Setup — OAuth 2.0 Client ID
 
-You need a Client ID so the app can read your Google Calendar shift events.
+The app uses the **PKCE authorization code flow** (`response_type=code`). No client secret is required.
 
 1. Go to [console.cloud.google.com](https://console.cloud.google.com)
 2. Create a new project (or select an existing one)
@@ -45,6 +45,10 @@ You need a Client ID so the app can read your Google Calendar shift events.
      ```
    - Click **Create**
 6. Copy the **Client ID** (format: `123456789-abc.apps.googleusercontent.com`)
+
+> **Note:** You do **not** need the Client Secret. The app uses PKCE, which is the
+> modern replacement for the deprecated implicit (`response_type=token`) flow and
+> works without a secret for public clients.
 
 ---
 

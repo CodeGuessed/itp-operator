@@ -25,10 +25,10 @@ export default function Settings({ appState }) {
 
   function handleSaveApiKey() { saveSettings({ ...settings, anthropicKey }); flash('API key saved') }
 
-  function handleConnectGcal() {
+  async function handleConnectGcal() {
     if (!gcalClientId.trim()) { alert('Enter a Google OAuth Client ID first.'); return }
     saveSettings({ ...settings, gcalClientId })
-    window.location.href = buildAuthUrl(gcalClientId.trim())
+    window.location.href = await buildAuthUrl(gcalClientId.trim())
   }
 
   function handleDisconnectGcal() {
