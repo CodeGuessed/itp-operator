@@ -1,168 +1,68 @@
+// lib/storage.js — localStorage interface with typed helpers
+
 const KEYS = {
-  DAILY: 'itp_daily',
-  WEEKLY: 'itp_weekly',
   SETTINGS: 'itp_settings',
+  DAILY_CHECKINS: 'itp_daily_checkins',
+  WEEKLY_REVIEWS: 'itp_weekly_reviews',
   BASELINES: 'itp_baselines',
-};
+  GCAL_CACHE: 'itp_gcal_cache',
+  GCAL_TOKEN: 'itp_gcal_token',
+}
 
-export const DEFAULT_BASELINES = {
-  hrv: 65,
-  rhr: 49,
-  sleep: 6.5,
-};
+const get = (key) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null } catch { return null } }
+const set = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)) } catch (e) { console.error('Storage write failed', e) } }
 
-export const DEFAULT_SETTINGS = {
-  apiKey: '',
-  gcalClientId: '',
-  gcalToken: null,
-  notificationTimes: {
-    DAY: '02:45',
-    NIGHT: '14:00',
-    CSHIFT: '07:30',
-    OFF: '07:30',
-    SUNDAY: '07:30',
+export const storage = {
+  // Settings
+  getSettings: () => get(KEYS.SETTINGS) || {
+    anthropicKey: '',
+    gcalConnected: false,
+    notificationTimes: { day: '02:45', night: '14:00', cshift: '07:30', off: '07:30' },
+    onboarded: false,
   },
-};
+  saveSettings: (s) => set(KEYS.SETTINGS, s),
 
-export function getSettings() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(KEYS.SETTINGS) || '{}');
-    return {
-      ...DEFAULT_SETTINGS,
-      ...stored,
-      notificationTimes: { ...DEFAULT_SETTINGS.notificationTimes, ...(stored.notificationTimes || {}) },
-    };
-  } catch {
-    return { ...DEFAULT_SETTINGS };
-  }
-}
+  // Baselines (rolling, updated weekly)
+  getBaselines: () => get(KEYS.BASELINES) || {
+    hrv: 65, rhr: 46, sleepHr: 6.5, weight: 213, updatedAt: null
+  },
+  saveBaselines: (b) => set(KEYS.BASELINES, b),
 
-export function saveSettings(settings) {
-  localStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings));
-}
+  // Daily check-ins
+  getDailyCheckins: () => get(KEYS.DAILY_CHECKINS) || [],
+  saveDailyCheckin: (entry) => {
+    const all = get(KEYS.DAILY_CHECKINS) || []
+    const idx = all.findIndex(e => e.date === entry.date)
+    if (idx >= 0) all[idx] = entry; else all.push(entry)
+    set(KEYS.DAILY_CHECKINS, all)
+  },
+  getTodayCheckin: () => {
+    const today = new Date().toISOString().slice(0, 10)
+    const all = get(KEYS.DAILY_CHECKINS) || []
+    return all.find(e => e.date === today) || null
+  },
+  getRecentCheckins: (n = 7) => {
+    const all = get(KEYS.DAILY_CHECKINS) || []
+    return all.slice(-n)
+  },
 
-export function getBaselines() {
-  try {
-    return { ...DEFAULT_BASELINES, ...JSON.parse(localStorage.getItem(KEYS.BASELINES) || '{}') };
-  } catch {
-    return { ...DEFAULT_BASELINES };
-  }
-}
+  // Weekly reviews
+  getWeeklyReviews: () => get(KEYS.WEEKLY_REVIEWS) || [],
+  saveWeeklyReview: (entry) => {
+    const all = get(KEYS.WEEKLY_REVIEWS) || []
+    const idx = all.findIndex(e => e.weekKey === entry.weekKey)
+    if (idx >= 0) all[idx] = entry; else all.push(entry)
+    set(KEYS.WEEKLY_REVIEWS, all)
+  },
+  getRecentWeeklyReviews: (n = 4) => {
+    const all = get(KEYS.WEEKLY_REVIEWS) || []
+    return all.slice(-n)
+  },
 
-export function saveBaselines(baselines) {
-  localStorage.setItem(KEYS.BASELINES, JSON.stringify(baselines));
-}
-
-function dateKey(date) {
-  const d = new Date(date);
-  return d.toISOString().split('T')[0];
-}
-
-export function getDailyLog(date) {
-  const key = `${KEYS.DAILY}_${dateKey(date)}`;
-  try {
-    return JSON.parse(localStorage.getItem(key) || 'null');
-  } catch {
-    return null;
-  }
-}
-
-export function saveDailyLog(date, data) {
-  const key = `${KEYS.DAILY}_${dateKey(date)}`;
-  localStorage.setItem(key, JSON.stringify({ ...data, updatedAt: Date.now() }));
-}
-
-export function getWeeklyLog(weekStart) {
-  const key = `${KEYS.WEEKLY}_${dateKey(weekStart)}`;
-  try {
-    return JSON.parse(localStorage.getItem(key) || 'null');
-  } catch {
-    return null;
-  }
-}
-
-export function saveWeeklyLog(weekStart, data) {
-  const key = `${KEYS.WEEKLY}_${dateKey(weekStart)}`;
-  localStorage.setItem(key, JSON.stringify({ ...data, updatedAt: Date.now() }));
-}
-
-export function getRecentDailyLogs(days = 7) {
-  const logs = [];
-  const now = new Date();
-  for (let i = 0; i < days; i++) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const log = getDailyLog(d);
-    if (log) logs.push({ date: dateKey(d), ...log });
-  }
-  return logs.reverse();
-}
-
-export function getAllDailyLogs() {
-  const logs = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith(KEYS.DAILY + '_')) {
-      try {
-        const data = JSON.parse(localStorage.getItem(key));
-        if (data) logs.push({ date: key.replace(KEYS.DAILY + '_', ''), ...data });
-      } catch {}
-    }
-  }
-  return logs.sort((a, b) => a.date.localeCompare(b.date));
-}
-
-export function getAllWeeklyLogs() {
-  const logs = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith(KEYS.WEEKLY + '_')) {
-      try {
-        const data = JSON.parse(localStorage.getItem(key));
-        if (data) logs.push({ weekStart: key.replace(KEYS.WEEKLY + '_', ''), ...data });
-      } catch {}
-    }
-  }
-  return logs.sort((a, b) => a.weekStart.localeCompare(b.weekStart));
-}
-
-export function exportAllData() {
-  const data = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith('itp_')) {
-      try {
-        data[key] = JSON.parse(localStorage.getItem(key));
-      } catch {
-        data[key] = localStorage.getItem(key);
-      }
-    }
-  }
-  return data;
-}
-
-export function clearAllData() {
-  const keysToRemove = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith('itp_')) keysToRemove.push(key);
-  }
-  keysToRemove.forEach((k) => localStorage.removeItem(k));
-}
-
-// Track last night shift for body battery suppression
-export function getLastNightShiftDate() {
-  const logs = getAllDailyLogs();
-  for (let i = logs.length - 1; i >= 0; i--) {
-    if (logs[i].shiftType === 'NIGHT') return new Date(logs[i].date);
-  }
-  return null;
-}
-
-export function isBodyBatterySuppressed(shiftType) {
-  if (shiftType === 'NIGHT' || shiftType === 'CSHIFT') return true;
-  const lastNight = getLastNightShiftDate();
-  if (!lastNight) return false;
-  const hoursSince = (Date.now() - lastNight.getTime()) / (1000 * 60 * 60);
-  return hoursSince < 24;
+  // GCal cache
+  getGCalCache: () => get(KEYS.GCAL_CACHE) || { events: [], cachedAt: null },
+  saveGCalCache: (data) => set(KEYS.GCAL_CACHE, { ...data, cachedAt: Date.now() }),
+  getGCalToken: () => get(KEYS.GCAL_TOKEN),
+  saveGCalToken: (t) => set(KEYS.GCAL_TOKEN, t),
+  clearGCalToken: () => localStorage.removeItem(KEYS.GCAL_TOKEN),
 }

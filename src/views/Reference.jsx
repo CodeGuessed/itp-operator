@@ -1,103 +1,38 @@
-import React, { useState } from 'react';
-import { getCurrentPhaseTargets, SHIFT_TRAINING_RULES } from '../lib/program.js';
+import React, { useState } from 'react'
+import { PHASES, runStallCheck } from '../lib/program.js'
+import { storage } from '../lib/storage.js'
 
+// Static shift training rules (not in canonical program.js — defined here)
+const SHIFT_TRAINING_RULES = [
+  { shift: 'DAY',    window: '18:30–20:30', notes: 'Post-shift. Moderate intensity OK if HRV normal.' },
+  { shift: 'NIGHT',  window: '13:00–15:00', notes: 'Pre-shift only. Low-moderate intensity. No high CNS load.' },
+  { shift: 'CSHIFT', window: 'N/A',         notes: 'Shortened session or rest. Shift spans prime recovery window.' },
+  { shift: 'OFF',    window: 'Flexible',    notes: 'Preferred training day. Full session if recovery permits.' },
+]
+
+// All 12 static failure modes
 const FAILURE_MODES = [
-  {
-    mode: 'Sleep debt accumulation',
-    signal: 'HRV <55 for 3+ consecutive days',
-    response: 'Mandatory REST for 2 days. Review shift schedule.',
-  },
-  {
-    mode: 'OT overload',
-    signal: 'OT flag + HRV flag same day',
-    response: 'ZONE 2 max. No strength work until both clear.',
-  },
-  {
-    mode: 'Night shift desync',
-    signal: 'NIGHT shift + sleep <6h on return day',
-    response: 'REST day prescribed automatically.',
-  },
-  {
-    mode: 'Dive fatigue',
-    signal: 'Dive day within 48h of training',
-    response: 'Dive protocol overrides. No breath-hold 24h post-dive.',
-  },
-  {
-    mode: 'Protein deficit stall',
-    signal: '3+ weeks RARELY protein + no weight progress',
-    response: 'Adjust food timing, not calories. Review meal prep.',
-  },
-  {
-    mode: 'OCD escalation',
-    signal: '3+ OCD markers active any single week',
-    response: 'Reduce tracking granularity. Weekly weigh-in only.',
-  },
-  {
-    mode: 'Motivation collapse',
-    signal: 'MOTIVATION flag 2+ consecutive days',
-    response: 'Review phase targets. Check sleep debt accumulation first.',
-  },
-  {
-    mode: 'Knee irritation',
-    signal: 'KNEE flag 3+ consecutive days',
-    response: 'Remove knee-dominant loading. Substitute upper/posterior chain.',
-  },
-  {
-    mode: 'HRV baseline drift',
-    signal: 'HRV below personal baseline for 2+ weeks',
-    response: 'Audit sleep quality, alcohol, stress load. May need deload.',
-  },
-  {
-    mode: 'Weight stall (genuine)',
-    signal: '4+ weeks no change, protein/sleep adequate',
-    response: 'Reduce calories 100–150kcal/day. Reassess in 2 weeks.',
-  },
-  {
-    mode: 'C-shift overtraining',
-    signal: 'CSHIFT + FULL prescribed repeatedly',
-    response: 'CSHIFT defaults to SHORT. Review engine rule application.',
-  },
-  {
-    mode: 'Phase gate failure',
-    signal: '≥3 gate questions unchecked at week 6',
-    response: 'Extend current phase 1 additional week. Do not advance.',
-  },
-];
-
-const STALL_DECISION_TREE = [
-  {
-    step: 1,
-    question: 'Is sleep averaging <6.5h?',
-    yes: 'Address sleep first. Weight stall is secondary. Fix shift timing or sleep hygiene.',
-    no: 'Proceed to step 2.',
-  },
-  {
-    step: 2,
-    question: 'Is protein hitting target most days?',
-    yes: 'Proceed to step 3.',
-    no: 'Protein deficit stall. Fix adherence before adjusting calories.',
-  },
-  {
-    step: 3,
-    question: 'Did dive load occur in last 7 days?',
-    yes: 'Dive-induced water retention possible. Assess again in 5–7 days.',
-    no: 'Proceed to step 4.',
-  },
-  {
-    step: 4,
-    question: 'Has stall persisted 4+ weeks with sleep and protein adequate?',
-    yes: 'Genuine stall. Reduce calories 100–150kcal/day. Reassess in 2 weeks.',
-    no: 'Not a genuine stall. Continue current approach.',
-  },
-];
+  { mode: 'Sleep debt accumulation',   signal: 'HRV <55 for 3+ consecutive days',              response: 'Mandatory REST 2 days. Review shift schedule.' },
+  { mode: 'OT overload',               signal: 'OT flag + HRV flag same day',                  response: 'Zone 2 max. No strength until both clear.' },
+  { mode: 'Night shift desync',         signal: 'NIGHT shift + sleep <6h on return day',        response: 'REST day prescribed automatically.' },
+  { mode: 'Dive fatigue',               signal: 'Dive day within 48h of training',              response: 'Dive protocol overrides. No breath-hold 24h post-dive.' },
+  { mode: 'Protein deficit stall',      signal: '3+ weeks RARELY + no weight progress',         response: 'Adjust food timing, not calories. Review meal prep.' },
+  { mode: 'OCD escalation',             signal: '≥2 OCD markers active any single week',        response: 'Reduce tracking granularity. Weekly weigh-in only.' },
+  { mode: 'Motivation collapse',         signal: 'MOTIVATION flag 2+ consecutive days',         response: 'Review phase targets. Check sleep debt accumulation first.' },
+  { mode: 'Knee irritation',            signal: 'KNEE flag 3+ consecutive days',                response: 'Remove knee-dominant loading. Substitute upper/posterior chain.' },
+  { mode: 'HRV baseline drift',         signal: 'HRV below baseline for 2+ weeks',             response: 'Audit sleep quality, alcohol, stress. May need deload.' },
+  { mode: 'Weight stall (genuine)',     signal: '4+ weeks no change, protein/sleep adequate',   response: 'Reduce calories 100–150kcal/day. Reassess in 2 weeks.' },
+  { mode: 'C-shift overtraining',       signal: 'CSHIFT + FULL prescribed repeatedly',          response: 'CSHIFT defaults to SHORT. Review engine rule application.' },
+  { mode: 'Phase gate failure',         signal: '≥3 gate questions unchecked at week 6',        response: 'Extend current phase 1 additional week. Do not advance.' },
+]
 
 function Collapsible({ title, children, defaultOpen = false }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(defaultOpen)
   return (
     <div style={{ marginBottom: 4 }}>
       <button
         className="collapsible-header"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(o => !o)}
         style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '12px 0' }}
       >
         <h3 style={{ color: 'var(--text)' }}>{title}</h3>
@@ -105,47 +40,44 @@ function Collapsible({ title, children, defaultOpen = false }) {
       </button>
       {open && <div className="collapsible-body">{children}</div>}
     </div>
-  );
+  )
 }
 
 function StallProtocol() {
+  const weeklies = storage.getRecentWeeklyReviews(4)
+  const checkins = storage.getRecentCheckins(7)
+
+  // Compute sleep avg from last 7 days
+  const sleepMap = { '<5h': 4.5, '5-6h': 5.5, '6-7h': 6.5, '7h+': 7.5 }
+  const sleepPts = checkins.map(c => sleepMap[c.sleep]).filter(Boolean)
+  const sleepAvg = sleepPts.length ? sleepPts.reduce((a, b) => a + b, 0) / sleepPts.length : 7
+
+  const lastWeekly = weeklies[weeklies.length - 1]
+  const proteinHit = lastWeekly?.proteinRate || 'Most'
+  const diveCountWeek = checkins.filter(c => c.diveDay).length
+
+  const result = runStallCheck({ sleepAvg, proteinHit, diveCountWeek })
+
+  const causeColor = { sleep: 'red', protein: 'amber', dives: 'amber', genuine: 'yellow' }[result.cause]
+
   return (
     <div>
-      {STALL_DECISION_TREE.map((item) => (
-        <div key={item.step} style={{ marginBottom: 14 }}>
-          <div style={{
-            display: 'flex',
-            gap: 10,
-            alignItems: 'flex-start',
-          }}>
-            <span className="mono" style={{
-              background: 'var(--surface2)',
-              border: '1px solid var(--border)',
-              padding: '2px 8px',
-              fontSize: '0.75rem',
-              flexShrink: 0,
-              color: 'var(--accent)',
-            }}>
-              {item.step}
-            </span>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: 6 }}>
-                {item.question}
-              </div>
-              <div style={{ fontSize: '0.8rem', marginBottom: 4 }}>
-                <span style={{ color: 'var(--green)', fontWeight: 700 }}>YES: </span>
-                <span style={{ color: 'var(--text2)' }}>{item.yes}</span>
-              </div>
-              <div style={{ fontSize: '0.8rem' }}>
-                <span style={{ color: 'var(--text2)', fontWeight: 700 }}>NO: </span>
-                <span style={{ color: 'var(--text2)' }}>{item.no}</span>
-              </div>
-            </div>
-          </div>
+      <div style={{ fontSize: '0.75rem', color: 'var(--text2)', marginBottom: 12 }}>
+        Auto-computed from last 7 days of data.
+      </div>
+      <div style={{ padding: '12px', border: `1px solid var(--${causeColor})`, marginBottom: 12 }}>
+        <div style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: `var(--${causeColor})`, marginBottom: 6 }}>
+          {result.cause === 'genuine' ? 'Genuine Stall' : `Likely Cause: ${result.cause}`}
         </div>
-      ))}
+        <div style={{ fontSize: '0.875rem' }}>{result.message}</div>
+      </div>
+      <div style={{ fontSize: '0.75rem', color: 'var(--text2)' }}>
+        Sleep avg 7d: <span className="mono">{sleepAvg.toFixed(1)}h</span> &nbsp;·&nbsp;
+        Protein last wk: <span className="mono">{proteinHit}</span> &nbsp;·&nbsp;
+        Dives 7d: <span className="mono">{diveCountWeek}</span>
+      </div>
     </div>
-  );
+  )
 }
 
 function FailureModes() {
@@ -170,74 +102,75 @@ function FailureModes() {
         </tbody>
       </table>
     </div>
-  );
+  )
 }
 
 function PhaseRules({ programPosition }) {
-  const targets = getCurrentPhaseTargets();
+  const currentPhase = PHASES.find(p => p.name === programPosition.phase) || PHASES[0]
 
   return (
     <div>
-      {targets && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
-            <div>
-              <div style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text2)', marginBottom: 2 }}>
-                Calories
-              </div>
-              <div className="mono" style={{ fontSize: '0.9rem' }}>
-                {targets.calories.base}
-                <span style={{ color: 'var(--text2)', fontSize: '0.75rem' }}>
-                  {' '}(−{targets.calories.deficit} deficit)
-                </span>
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text2)', marginBottom: 2 }}>
-                Protein
-              </div>
-              <div className="mono" style={{ fontSize: '0.9rem' }}>
-                {targets.protein}g
-              </div>
-            </div>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text2)', marginBottom: 8 }}>
+          Current Phase Targets — {currentPhase.name}
+        </div>
+        <div style={{ display: 'flex', gap: 20 }}>
+          <div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text2)', marginBottom: 2 }}>Calories</div>
+            <div className="mono" style={{ fontSize: '1rem' }}>{currentPhase.calories.toLocaleString()}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text2)', marginBottom: 2 }}>Protein</div>
+            <div className="mono" style={{ fontSize: '1rem' }}>{currentPhase.protein[0]}–{currentPhase.protein[1]}g</div>
           </div>
         </div>
-      )}
+      </div>
+
+      <div style={{ marginBottom: 8, fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text2)' }}>
+        All Phase Targets
+      </div>
+      <table className="data-table" style={{ marginBottom: 16 }}>
+        <thead><tr><th>Phase</th><th>Dates</th><th>kcal</th><th>Protein</th></tr></thead>
+        <tbody>
+          {PHASES.map(p => (
+            <tr key={p.name} style={{ opacity: p.name === programPosition.phase ? 1 : 0.5 }}>
+              <td className="mono" style={{ fontWeight: 700, color: 'var(--accent)' }}>{p.name}</td>
+              <td style={{ fontSize: '0.7rem', color: 'var(--text2)' }}>{p.start}<br />{p.end}</td>
+              <td className="mono" style={{ fontSize: '0.8rem' }}>{p.calories.toLocaleString()}</td>
+              <td className="mono" style={{ fontSize: '0.8rem' }}>{p.protein[0]}–{p.protein[1]}g</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
       <div style={{ marginBottom: 8, fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text2)' }}>
         Training Rules by Shift
       </div>
       <table className="data-table">
-        <thead>
-          <tr>
-            <th>Shift</th>
-            <th>Window</th>
-            <th>Notes</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Shift</th><th>Window</th><th>Notes</th></tr></thead>
         <tbody>
-          {Object.entries(SHIFT_TRAINING_RULES).map(([shift, rule]) => (
-            <tr key={shift}>
-              <td className="mono" style={{ fontWeight: 700, color: 'var(--accent)' }}>{shift}</td>
-              <td className="mono" style={{ fontSize: '0.75rem' }}>{rule.window}</td>
-              <td style={{ color: 'var(--text2)', fontSize: '0.75rem' }}>{rule.notes}</td>
+          {SHIFT_TRAINING_RULES.map(r => (
+            <tr key={r.shift}>
+              <td className="mono" style={{ fontWeight: 700, color: 'var(--accent)' }}>{r.shift}</td>
+              <td className="mono" style={{ fontSize: '0.75rem' }}>{r.window}</td>
+              <td style={{ color: 'var(--text2)', fontSize: '0.75rem' }}>{r.notes}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
-  );
+  )
 }
 
 export default function Reference({ appState }) {
-  const { programPosition } = appState;
+  const { programPosition } = appState
 
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
         <h2 style={{ marginBottom: 4 }}>Quick Reference</h2>
         <div style={{ color: 'var(--text2)', fontSize: '0.8rem' }}>
-          {programPosition.phaseLabel || programPosition.phase} · Wk {programPosition.week}
+          {programPosition.phase} · Cycle {programPosition.cycle} · Week {programPosition.week}
         </div>
       </div>
 
@@ -255,5 +188,5 @@ export default function Reference({ appState }) {
         </Collapsible>
       </div>
     </div>
-  );
+  )
 }

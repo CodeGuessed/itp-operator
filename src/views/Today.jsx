@@ -1,63 +1,63 @@
-import React from 'react';
-import { formatProgramDate } from '../lib/program.js';
+import React, { useState } from 'react'
+import { computePrescription } from '../lib/program.js'
+
+// Colour class from hex shortcut — prescription level → CSS class
+const LEVEL_CLASS = {
+  FULL: 'green',
+  SHORT: 'yellow',
+  ZONE2: 'amber',
+  REST: 'red',
+  DIVE_PROTOCOL: 'blue',
+}
 
 const HRV_OPTS = [
-  { value: '<55', label: '<55', color: 'red' },
-  { value: '55-65', label: '55–65', color: 'amber' },
-  { value: '65-75', label: '65–75', color: 'yellow' },
-  { value: '75+', label: '75+', color: 'green' },
-];
-
+  { value: '<55',   label: '<55',    color: 'red'   },
+  { value: '55-65', label: '55–65',  color: 'amber' },
+  { value: '65-75', label: '65–75',  color: 'yellow'},
+  { value: '75+',   label: '75+',    color: 'green' },
+]
 const SLEEP_OPTS = [
-  { value: '<5h', label: '<5h', color: 'red' },
+  { value: '<5h',  label: '<5h',  color: 'red'   },
   { value: '5-6h', label: '5–6h', color: 'amber' },
-  { value: '6-7h', label: '6–7h', color: 'yellow' },
-  { value: '7h+', label: '7h+', color: 'green' },
-];
-
+  { value: '6-7h', label: '6–7h', color: 'yellow'},
+  { value: '7h+',  label: '7h+',  color: 'green' },
+]
 const REM_OPTS = [
-  { value: '<60', label: '<60min', color: 'amber' },
+  { value: '<60',  label: '<60min', color: 'amber' },
   { value: '>=60', label: '≥60min', color: 'green' },
-];
-
+]
 const RHR_OPTS = [
-  { value: '>51', label: 'Elevated >51', color: 'red' },
-  { value: '47-51', label: 'Normal 47–51', color: 'yellow' },
-  { value: '43-46', label: 'Good 43–46', color: 'green' },
-  { value: '<43', label: 'Low <43', color: 'blue' },
-];
-
+  { value: '>51',   label: 'Elevated >51', color: 'red'   },
+  { value: '47-51', label: 'Normal 47–51', color: 'yellow'},
+  { value: '43-46', label: 'Good 43–46',   color: 'green' },
+  { value: '<43',   label: 'Low <43',      color: 'blue'  },
+]
 const SUBJECTIVE_OPTS = [
-  { value: 'low', label: 'Low', color: 'red' },
-  { value: 'neutral', label: 'Neutral', color: 'yellow' },
-  { value: 'good', label: 'Good', color: 'green' },
-];
-
+  { value: 'low',     label: 'Low',     color: 'red'   },
+  { value: 'neutral', label: 'Neutral', color: 'yellow'},
+  { value: 'good',    label: 'Good',    color: 'green' },
+]
 const SHIFT_OPTS = [
-  { value: 'DAY', label: 'DAY' },
-  { value: 'NIGHT', label: 'NIGHT' },
-  { value: 'CSHIFT', label: 'C' },
-  { value: 'OFF', label: 'OFF' },
-];
-
+  { value: 'DAY',    label: 'DAY'   },
+  { value: 'NIGHT',  label: 'NIGHT' },
+  { value: 'CSHIFT', label: 'C'     },
+  { value: 'OFF',    label: 'OFF'   },
+]
 const EOD_RESULTS = [
-  { value: 'COMPLETED', label: 'Completed', color: 'green' },
-  { value: 'PARTIAL', label: 'Partial', color: 'yellow' },
-  { value: 'SKIPPED', label: 'Skipped', color: 'red' },
-];
-
+  { value: true,  label: 'Completed', color: 'green'  },
+  { value: false, label: 'Skipped',   color: 'red'    },
+]
 const EOD_LOAD = [
-  { value: 'HIT', label: 'Hit Target', color: 'green' },
-  { value: 'BELOW', label: 'Below', color: 'yellow' },
-  { value: 'EXCEEDED', label: 'Exceeded', color: 'amber' },
-];
-
+  { value: 'hit',      label: 'Hit Target', color: 'green' },
+  { value: 'below',    label: 'Below',      color: 'yellow'},
+  { value: 'exceeded', label: 'Exceeded',   color: 'amber' },
+]
 const EOD_FLAGS = [
-  { value: 'NONE', label: 'None', color: 'green' },
-  { value: 'KNEE', label: 'Knee', color: 'amber' },
-  { value: 'FATIGUE', label: 'Fatigue', color: 'amber' },
-  { value: 'MOTIVATION', label: 'Motivation', color: 'yellow' },
-];
+  { value: 'none',       label: 'None',       color: 'green' },
+  { value: 'knee',       label: 'Knee',       color: 'amber' },
+  { value: 'fatigue',    label: 'Fatigue',    color: 'amber' },
+  { value: 'motivation', label: 'Motivation', color: 'yellow'},
+]
 
 function SelectRow({ label, options, value, onChange }) {
   return (
@@ -66,7 +66,7 @@ function SelectRow({ label, options, value, onChange }) {
       <div className="btn-row">
         {options.map((opt) => (
           <button
-            key={opt.value}
+            key={String(opt.value)}
             className={`btn sel-${opt.color}${value === opt.value ? ' selected' : ''}`}
             onClick={() => onChange(value === opt.value ? null : opt.value)}
           >
@@ -75,90 +75,97 @@ function SelectRow({ label, options, value, onChange }) {
         ))}
       </div>
     </div>
-  );
+  )
 }
 
-function PrescriptionCard({ prescription, bodyBatterySuppressed }) {
-  if (!prescription) return null;
-  const { level, sessions, flags, rationale } = prescription;
-
+function PrescriptionCard({ rx }) {
+  if (!rx) return null
+  const cls = LEVEL_CLASS[rx.level] || 'green'
   return (
-    <div className={`rx-card ${level.color}`}>
-      <div className={`rx-label ${level.color}`}>{level.label}</div>
+    <div className={`rx-card ${cls}`}>
+      <div className={`rx-label ${cls}`}>{rx.label}</div>
       <ul className="rx-sessions">
-        {sessions.map((s, i) => (
-          <li key={i}>{s}</li>
-        ))}
+        {rx.sessions.map((s, i) => <li key={i}>{s}</li>)}
       </ul>
-      <div className="rx-rationale">{rationale}</div>
-      {flags.length > 0 && (
+      <div className="rx-rationale">{rx.rationale}</div>
+      {rx.flags?.length > 0 && (
         <div className="rx-flags">
-          {flags.map((f) => (
-            <span key={f} className="flag-chip">{f}</span>
+          {rx.flags.map((f) => (
+            <span key={f.key} className="flag-chip">{f.msg}</span>
           ))}
         </div>
       )}
-      {bodyBatterySuppressed && (
-        <div className="suppression-notice">
-          BODY BATTERY — suppressed (night/c-shift window)
-        </div>
+      {rx.suppressBodyBattery && (
+        <div className="suppression-notice">BODY BATTERY — suppressed (night/c-shift window)</div>
       )}
     </div>
-  );
+  )
 }
 
-function EodCard({ eod, onSave }) {
-  const [result, setResult] = React.useState(eod?.result || null);
-  const [load, setLoad] = React.useState(eod?.load || null);
-  const [flag, setFlag] = React.useState(eod?.flag || null);
-
-  function handleSave() {
-    if (!result) return;
-    onSave({ result, load, flag });
-  }
+function EodCard({ existing, onSave }) {
+  const [sessionCompleted, setSessionCompleted] = useState(existing?.sessionCompleted ?? null)
+  const [loadRating, setLoadRating] = useState(existing?.loadRating || null)
+  const [eodFlag, setEodFlag] = useState(existing?.eodFlag || null)
 
   return (
     <div className="card">
       <div className="card-title">End-of-Day Log</div>
-      <SelectRow label="Session Result" options={EOD_RESULTS} value={result} onChange={setResult} />
-      <SelectRow label="Load" options={EOD_LOAD} value={load} onChange={setLoad} />
-      <SelectRow label="Flag" options={EOD_FLAGS} value={flag} onChange={setFlag} />
-      <button className="btn btn-full btn-primary" onClick={handleSave} disabled={!result}>
-        {eod ? 'Update Log' : 'Save Log'}
+      <SelectRow
+        label="Session Result"
+        options={EOD_RESULTS}
+        value={sessionCompleted}
+        onChange={setSessionCompleted}
+      />
+      <SelectRow label="Load" options={EOD_LOAD} value={loadRating} onChange={setLoadRating} />
+      <SelectRow label="Flag" options={EOD_FLAGS} value={eodFlag} onChange={setEodFlag} />
+      <button
+        className="btn btn-full btn-primary"
+        disabled={sessionCompleted === null}
+        onClick={() => onSave({ sessionCompleted, loadRating, eodFlag })}
+      >
+        {existing ? 'Update Log' : 'Save Log'}
       </button>
     </div>
-  );
+  )
 }
 
 export default function Today({ appState }) {
-  const {
-    programPosition,
-    today,
-    checkIn,
-    updateCheckIn,
-    prescription,
-    generatePrescription,
-    eod,
-    saveEod,
-    bodyBatterySuppressed,
-    gcalShift,
-    gcalLoading,
-  } = appState;
+  const { programPosition, todayCheckin, saveCheckin, todayShift, gcalLoading, baselines } = appState
 
-  const dateStr = formatProgramDate(today);
+  // Initialise form from saved checkin or GCal-detected shift
+  const [form, setForm] = useState(() => ({
+    hrv:           todayCheckin?.hrv           || null,
+    sleep:         todayCheckin?.sleep         || null,
+    rem:           todayCheckin?.rem           || null,
+    rhr:           todayCheckin?.rhr           || null,
+    shiftType:     todayCheckin?.shiftType     || todayShift?.type || null,
+    otOccurred:    todayCheckin?.otOccurred    || false,
+    diveDay:       todayCheckin?.diveDay       || false,
+    subjectiveFeel:todayCheckin?.subjectiveFeel|| null,
+  }))
+
+  const [rx, setRx] = useState(todayCheckin?.prescription || null)
+  const [showEod, setShowEod] = useState(!!todayCheckin?.prescription)
+
+  function set(field, val) { setForm(prev => ({ ...prev, [field]: val })) }
 
   function handleGenerate() {
-    const ci = checkIn;
-    if (!ci.hrv || !ci.sleep || !ci.rem || !ci.rhr || !ci.shiftType) {
-      alert('Complete all check-in fields before generating prescription.');
-      return;
+    const required = ['hrv', 'sleep', 'rem', 'rhr', 'shiftType']
+    if (required.some(k => !form[k])) {
+      alert('Complete all check-in rows before generating prescription.')
+      return
     }
-    generatePrescription();
+    const result = computePrescription({ ...form, baselines })
+    setRx(result)
+    setShowEod(true)
+    saveCheckin({ ...form, prescription: result })
   }
 
-  const gcalDetected = gcalShift
-    ? gcalShift.shiftType
-    : null;
+  function handleEodSave(eodData) {
+    saveCheckin({ ...form, prescription: rx, ...eodData })
+  }
+
+  const dateStr = new Date().toLocaleDateString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short' })
 
   return (
     <div>
@@ -180,109 +187,63 @@ export default function Today({ appState }) {
           <span className="top-strip-label">Date</span>
           <span className="top-strip-value">{dateStr}</span>
         </div>
-        {programPosition.isDeload && (
-          <div style={{ width: '100%' }}>
-            <span className="flag-chip" style={{ borderColor: 'var(--blue)', color: 'var(--blue)' }}>
-              DELOAD WEEK
-            </span>
-          </div>
-        )}
       </div>
 
-      {/* GCal context row */}
+      {/* GCal shift context + overrides */}
       <div className="gcal-strip">
         <span className="gcal-detected">
-          {gcalLoading ? (
-            'GCal loading…'
-          ) : gcalDetected ? (
-            <>GCal: <strong>{gcalDetected}</strong></>
-          ) : (
-            'GCal: no shift detected'
-          )}
+          {gcalLoading
+            ? 'GCal loading…'
+            : todayShift?.type
+              ? <>GCal: <strong>{todayShift.type}</strong></>
+              : 'GCal: no shift detected'}
         </span>
-        {SHIFT_OPTS.map((opt) => (
+        {SHIFT_OPTS.map(opt => (
           <button
             key={opt.value}
-            className={`btn${checkIn.shiftType === opt.value ? ' selected' : ''}`}
+            className={`btn${form.shiftType === opt.value ? ' selected' : ''}`}
             style={{ minHeight: 34, fontSize: '0.65rem', padding: '4px 10px' }}
-            onClick={() => updateCheckIn('shiftType', opt.value)}
+            onClick={() => set('shiftType', opt.value)}
           >
             {opt.label}
           </button>
         ))}
       </div>
 
-      {/* Morning check-in card */}
+      {/* Morning check-in */}
       <div className="card">
         <div className="card-title">Morning Check-in</div>
+        <SelectRow label="HRV on Wake" options={HRV_OPTS} value={form.hrv} onChange={v => set('hrv', v)} />
+        <SelectRow label="Sleep Duration" options={SLEEP_OPTS} value={form.sleep} onChange={v => set('sleep', v)} />
+        <SelectRow label="REM Sleep" options={REM_OPTS} value={form.rem} onChange={v => set('rem', v)} />
+        <SelectRow label="RHR vs Baseline" options={RHR_OPTS} value={form.rhr} onChange={v => set('rhr', v)} />
+        <SelectRow label="Subjective Feel" options={SUBJECTIVE_OPTS} value={form.subjectiveFeel} onChange={v => set('subjectiveFeel', v)} />
 
-        <SelectRow
-          label="HRV on Wake"
-          options={HRV_OPTS}
-          value={checkIn.hrv}
-          onChange={(v) => updateCheckIn('hrv', v)}
-        />
-        <SelectRow
-          label="Sleep Duration"
-          options={SLEEP_OPTS}
-          value={checkIn.sleep}
-          onChange={(v) => updateCheckIn('sleep', v)}
-        />
-        <SelectRow
-          label="REM Sleep"
-          options={REM_OPTS}
-          value={checkIn.rem}
-          onChange={(v) => updateCheckIn('rem', v)}
-        />
-        <SelectRow
-          label="RHR vs Baseline"
-          options={RHR_OPTS}
-          value={checkIn.rhr}
-          onChange={(v) => updateCheckIn('rhr', v)}
-        />
-        <SelectRow
-          label="Subjective Feel"
-          options={SUBJECTIVE_OPTS}
-          value={checkIn.subjective}
-          onChange={(v) => updateCheckIn('subjective', v)}
-        />
-
-        {/* Toggles */}
         <div className="btn-row-label" style={{ marginTop: 4 }}>Modifiers</div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           <button
-            className={`btn btn-toggle flex-1${checkIn.otOccurred ? ' active' : ''}`}
-            onClick={() => updateCheckIn('otOccurred', !checkIn.otOccurred)}
-          >
-            OT
-          </button>
+            className={`btn btn-toggle flex-1${form.otOccurred ? ' active' : ''}`}
+            onClick={() => set('otOccurred', !form.otOccurred)}
+          >OT</button>
           <button
-            className={`btn btn-toggle flex-1${checkIn.diveDay ? ' active' : ''}`}
-            onClick={() => updateCheckIn('diveDay', !checkIn.diveDay)}
-          >
-            DIVE DAY
-          </button>
+            className={`btn btn-toggle flex-1${form.diveDay ? ' active' : ''}`}
+            onClick={() => set('diveDay', !form.diveDay)}
+          >DIVE DAY</button>
         </div>
 
-        <button
-          className="btn btn-full btn-primary"
-          onClick={handleGenerate}
-          style={{ marginTop: 4 }}
-        >
+        <button className="btn btn-full btn-primary" onClick={handleGenerate} style={{ marginTop: 4 }}>
           Get Today's Prescription
         </button>
       </div>
 
-      {/* Prescription */}
-      <PrescriptionCard
-        prescription={prescription}
-        bodyBatterySuppressed={bodyBatterySuppressed}
-      />
+      <PrescriptionCard rx={rx} />
 
-      {/* EOD log — shown after prescription generated */}
-      {prescription && (
-        <EodCard eod={eod} onSave={saveEod} />
+      {showEod && (
+        <EodCard
+          existing={todayCheckin?.sessionCompleted !== undefined ? todayCheckin : null}
+          onSave={handleEodSave}
+        />
       )}
     </div>
-  );
+  )
 }
