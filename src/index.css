@@ -246,26 +246,31 @@ h3 { font-size: 0.8rem; font-weight: 700; }
 .btn-danger { border-color: var(--red); color: var(--red); }
 .btn-danger:hover { background: rgba(255,95,109,0.1); }
 
-/* Selection-state button palette */
+/* Selection-state button palette.
+   Selected = a fill overlay in the SAME colour as the outline at 30% opacity
+   (70% transparent), keeping the outline colour. Text stays readable on top. */
 .btn.sel-green  { border-color: var(--teal);   color: var(--teal);   }
-.btn.sel-green.selected  { background: rgba(0,229,176,0.12); }
+.btn.sel-green.selected  { background: rgba(0,229,176,0.30);  border-color: var(--teal);   color: var(--text); }
 .btn.sel-yellow { border-color: var(--amber);  color: var(--amber);  }
-.btn.sel-yellow.selected { background: rgba(255,170,68,0.12); }
+.btn.sel-yellow.selected { background: rgba(255,170,68,0.30); border-color: var(--amber);  color: var(--text); }
 .btn.sel-amber  { border-color: var(--amber);  color: var(--amber);  }
-.btn.sel-amber.selected  { background: rgba(255,170,68,0.12); }
+.btn.sel-amber.selected  { background: rgba(255,170,68,0.30); border-color: var(--amber);  color: var(--text); }
 .btn.sel-red    { border-color: var(--red);    color: var(--red);    }
-.btn.sel-red.selected    { background: rgba(255,95,109,0.12); }
+.btn.sel-red.selected    { background: rgba(255,95,109,0.30); border-color: var(--red);    color: var(--text); }
 .btn.sel-blue   { border-color: var(--blue);   color: var(--blue);   }
-.btn.sel-blue.selected   { background: rgba(85,170,255,0.12); }
+.btn.sel-blue.selected   { background: rgba(85,170,255,0.30); border-color: var(--blue);   color: var(--text); }
+.btn.sel-violet { border-color: var(--violet); color: var(--violet); }
+.btn.sel-violet.selected { background: rgba(204,136,255,0.30);border-color: var(--violet); color: var(--text); }
 
+/* Generic selected (uncoloured buttons): fill with the violet outline at 30% */
 .btn.selected {
   border-color: var(--violet);
-  background: rgba(204,136,255,0.1);
+  background: rgba(204,136,255,0.30);
   color: var(--text);
 }
 
 .btn-toggle { border-color: var(--border); color: var(--text2); }
-.btn-toggle.active { border-color: var(--amber); background: rgba(255,170,68,0.1); color: var(--amber); }
+.btn-toggle.active { border-color: var(--amber); background: rgba(255,170,68,0.30); color: var(--text); }
 
 /* ── Button rows ────────────────────────────────── */
 .btn-row { display: flex; gap: 6px; margin-bottom: 8px; }

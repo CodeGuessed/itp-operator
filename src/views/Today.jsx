@@ -38,10 +38,10 @@ const SUBJECTIVE_OPTS = [
   { value: 'good',    label: 'Good',    color: 'green' },
 ]
 const SHIFT_OPTS = [
-  { value: 'DAY',    label: 'DAY'   },
-  { value: 'NIGHT',  label: 'NIGHT' },
-  { value: 'CSHIFT', label: 'C'     },
-  { value: 'OFF',    label: 'OFF'   },
+  { value: 'DAY',    label: 'DAY',   sel: 'sel-amber'  },
+  { value: 'NIGHT',  label: 'NIGHT', sel: 'sel-violet' },
+  { value: 'CSHIFT', label: 'C',     sel: 'sel-green'  },
+  { value: 'OFF',    label: 'OFF',   sel: 'sel-blue'   },
 ]
 const EOD_RESULTS = [
   { value: true,  label: 'Completed', color: 'green'  },
@@ -202,7 +202,7 @@ export default function Today({ appState }) {
         {SHIFT_OPTS.map(opt => (
           <button
             key={opt.value}
-            className={`btn${form.shiftType === opt.value ? ' selected' : ''}`}
+            className={`btn ${opt.sel}${form.shiftType === opt.value ? ' selected' : ''}`}
             style={{ minHeight: 34, fontSize: '0.65rem', padding: '4px 10px' }}
             onClick={() => set('shiftType', opt.value)}
           >

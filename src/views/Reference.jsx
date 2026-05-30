@@ -162,6 +162,144 @@ function PhaseRules({ programPosition }) {
   )
 }
 
+// ── Workout prescriptions (ITP v6.9) ───────────────────────────────────────
+const MOVEMENTS = [
+  { name: 'KB Suitcase Deadlift', c1: '35 lb (single)', next: '55 lb', rx: '3×10/side, full glute lockout' },
+  { name: 'KB Z-Press',           c1: '25 lb',          next: '35 lb', rx: '3×10/side, stable trunk' },
+  { name: 'KB Bent-Over Row',     c1: '35 lb',          next: '55 lb', rx: '3×10/side, 2-sec eccentric, full ROM' },
+  { name: 'KB Goblet Squat',      c1: '25 lb (BW ×2)',  next: '35 lb', rx: '3×10, full depth, pain-free' },
+  { name: 'Turkish Get-Up',       c1: '25 lb',          next: '35 lb', rx: '3×3/side, full control' },
+  { name: 'KB Swing',             c1: '35 lb',          next: '55 lb', rx: '5×15 explosive before load ↑' },
+  { name: 'Pallof Press',         c1: 'Medium band',    next: 'Heavier / step out', rx: '3×15/side, stable trunk' },
+  { name: 'Mace 360',             c1: '10 lb',          next: '15 lb', rx: '3×12/side, full control' },
+  { name: 'Lateral Raise',        c1: '10 lb',          next: '15 lb', rx: '3×15, 3-sec eccentric' },
+]
+const SESSION_BLOCKS = [
+  { block: 'Glute Primer',      content: 'Hip thrusts, clams, lateral walk, SL bridge',      dur: '5–7 min',  rule: 'Never skip' },
+  { block: 'Warm-Up',          content: 'T-spine rot, hip CARs, 90/90, ankles, pull-aparts', dur: '8 min',    rule: 'Never skip' },
+  { block: 'Main Lifts',       content: 'Suitcase DL, Z-Press, Row, Goblet, TGU — 3 sets',   dur: '30–36 min',rule: 'Reduce load before sets' },
+  { block: 'Accessory',        content: 'Pallof, mace 360, lateral raise',                   dur: '6–8 min',  rule: 'Skip on REDUCED/MIN' },
+  { block: 'Swing Finisher',   content: '5×10 KB swing',                                     dur: '5 min',    rule: 'Skip on REDUCED/MIN' },
+  { block: 'Pull-Up Progress', content: 'Table row (C1) / pull-up protocol (C2+)',           dur: '5 min',    rule: 'Skip on MIN only' },
+  { block: 'Decompression',    content: 'Hip-flexor stretch, child’s pose, 5 breaths',  dur: '3–4 min',  rule: 'Never skip' },
+]
+
+// ── Breath-hold tables (CO₂ daily, O₂ from Cycle 4) ────────────────────────
+const CO2_TABLE = [
+  { cycles: '1–2', format: '4-min', structure: '8 × (2:00 breathe / 0:30 hold)', goal: 'Baseline; build daily habit' },
+  { cycles: '3–4', format: '6-min', structure: '6 × (1:30 breathe / 1:00 hold)', goal: 'Extend hold; reduce CO₂ anxiety' },
+  { cycles: '5–6', format: '8-min', structure: '6 × (1:30 breathe / 1:30 hold)', goal: 'Cave-prep CO₂ management' },
+  { cycles: '7',   format: '6-min', structure: '6 × (1:30 breathe / 1:00 hold)', goal: 'Maintain through Polish' },
+]
+const O2_TABLE = [
+  { cycles: '4–5', structure: '8 × (0:30 breathe / 2:00 hold, full inhale static)', goal: 'O₂ efficiency; relax at depth' },
+  { cycles: '6–7', structure: '6 × (1:00 breathe / 2:30 hold)',                     goal: 'Extended apnea for penetrations' },
+]
+
+// ── Recovery substitutions — adjustment ladder by fatigue trigger ──────────
+const RECOVERY_LADDER = [
+  { tier: 'FULL',     color: 'teal',   trigger: 'All signals green',                    sub: 'Full session — primer, warm-up, 5 main lifts, accessory, swing, pull-up, decompression.' },
+  { tier: 'REDUCED',  color: 'yellow', trigger: 'One amber signal, no red',             sub: 'Drop accessory + swing finisher. Primer + warm-up + 5 main lifts + decompression. Reduce load one step if RPE high. No PRs.' },
+  { tier: 'MINIMUM',  color: 'amber',  trigger: 'Two amber, or one red',               sub: 'Primer + warm-up + 2 main lifts (deadlift & row only) + decompression. 2 sets, no swing. 30 min max.' },
+  { tier: 'MOBILITY', color: 'amber',  trigger: 'Two+ red, or HRV <50 ms',             sub: 'Warm-up flow only: T-spine rot, hip CARs, 90/90, hip-flexor stretch. 15–20 min, no loaded work. CO₂ table if RHR normal. Counts as a session.' },
+  { tier: 'REST',     color: 'red',    trigger: 'HRV <50 + sleep <5.5h + shift/post-OT',sub: 'Full rest. No CO₂ table. No decisions. Do not compensate tomorrow.' },
+]
+
+function WorkoutPrescriptions() {
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <div style={{ fontSize: 9, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--muted)', marginBottom: 6 }}>Main Movements</div>
+      <table className="data-table" style={{ marginBottom: 16 }}>
+        <thead><tr><th>Movement</th><th>Cycle 1</th><th>Next</th><th>Prescription</th></tr></thead>
+        <tbody>
+          {MOVEMENTS.map((m, i) => (
+            <tr key={i}>
+              <td style={{ fontWeight: 700, fontSize: 11 }}>{m.name}</td>
+              <td className="mono" style={{ fontSize: 10, color: 'var(--teal)' }}>{m.c1}</td>
+              <td className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>{m.next}</td>
+              <td style={{ fontSize: 10, color: 'var(--text2)' }}>{m.rx}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ fontSize: 9, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--muted)', marginBottom: 6 }}>Session Structure (3×/week)</div>
+      <table className="data-table">
+        <thead><tr><th>Block</th><th>Content</th><th>Dur</th><th>Rule</th></tr></thead>
+        <tbody>
+          {SESSION_BLOCKS.map((b, i) => (
+            <tr key={i}>
+              <td style={{ fontWeight: 700, fontSize: 11 }}>{b.block}</td>
+              <td style={{ fontSize: 10, color: 'var(--text2)' }}>{b.content}</td>
+              <td className="mono" style={{ fontSize: 10 }}>{b.dur}</td>
+              <td style={{ fontSize: 10, color: 'var(--muted)' }}>{b.rule}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function BreathTables() {
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <div style={{ fontSize: 9, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--muted)', marginBottom: 6 }}>
+        CO₂ Table — daily, anchored to morning coffee · skip on dive days
+      </div>
+      <table className="data-table" style={{ marginBottom: 16 }}>
+        <thead><tr><th>Cycles</th><th>Format</th><th>Structure</th><th>Goal</th></tr></thead>
+        <tbody>
+          {CO2_TABLE.map((r, i) => (
+            <tr key={i}>
+              <td className="mono" style={{ color: 'var(--accent)', fontWeight: 700 }}>{r.cycles}</td>
+              <td className="mono" style={{ fontSize: 10 }}>{r.format}</td>
+              <td className="mono" style={{ fontSize: 10, color: 'var(--teal)' }}>{r.structure}</td>
+              <td style={{ fontSize: 10, color: 'var(--text2)' }}>{r.goal}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ fontSize: 9, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--muted)', marginBottom: 6 }}>
+        O₂ Table — introduced Cycle 4
+      </div>
+      <table className="data-table" style={{ marginBottom: 12 }}>
+        <thead><tr><th>Cycles</th><th>Structure</th><th>Goal</th></tr></thead>
+        <tbody>
+          {O2_TABLE.map((r, i) => (
+            <tr key={i}>
+              <td className="mono" style={{ color: 'var(--accent)', fontWeight: 700 }}>{r.cycles}</td>
+              <td className="mono" style={{ fontSize: 10, color: 'var(--blue)' }}>{r.structure}</td>
+              <td style={{ fontSize: 10, color: 'var(--text2)' }}>{r.goal}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ padding: '8px 10px', border: '1px solid var(--red)', borderRadius: 6, fontSize: 10, color: 'var(--red)', lineHeight: 1.5 }}>
+        ⚠ O₂ table: dry practice only, seated, at home. Never near water without a trained buddy. Never combine CO₂ + O₂ same day. At 2:30 holds (C6–7) another person must be present. Vyvanse dive day: 10 mg only (MD approved).
+      </div>
+    </div>
+  )
+}
+
+function RecoverySubstitutions() {
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 12, lineHeight: 1.5 }}>
+        Bidirectional adjustment ladder. Each fatigue trigger substitutes the session down a tier — the substitution counts as the session. Never compensate the next day.
+      </div>
+      {RECOVERY_LADDER.map((r, i) => (
+        <div key={i} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: i < RECOVERY_LADDER.length - 1 ? '1px solid var(--border)' : 'none' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 13, color: `var(--${r.color})` }}>{r.tier}</span>
+            <span className="mono" style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{r.trigger}</span>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5 }}>{r.sub}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function Reference({ appState }) {
   const { programPosition } = appState
 
@@ -175,7 +313,19 @@ export default function Reference({ appState }) {
       </div>
 
       <div className="card" style={{ padding: '0 16px' }}>
-        <Collapsible title="Stall Protocol" defaultOpen={true}>
+        <Collapsible title="Workout Prescriptions" defaultOpen={true}>
+          <WorkoutPrescriptions />
+        </Collapsible>
+        <div style={{ borderTop: '1px solid var(--border)' }} />
+        <Collapsible title="Recovery Substitutions">
+          <RecoverySubstitutions />
+        </Collapsible>
+        <div style={{ borderTop: '1px solid var(--border)' }} />
+        <Collapsible title="O₂ / CO₂ Tables">
+          <BreathTables />
+        </Collapsible>
+        <div style={{ borderTop: '1px solid var(--border)' }} />
+        <Collapsible title="Stall Protocol">
           <StallProtocol />
         </Collapsible>
         <div style={{ borderTop: '1px solid var(--border)' }} />
