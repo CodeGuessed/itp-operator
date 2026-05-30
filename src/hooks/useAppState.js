@@ -15,7 +15,7 @@ const winEnd   = () => isoOffset(WINDOW_FUTURE_DAYS)
 
 // Bump when the embedded default roster changes — forces a one-time refresh on
 // existing devices (preserving manual edits). Source: ICS v6.9.
-const SEED_VERSION = 'v6.9-ics-1'
+const SEED_VERSION = 'v6.9-rotation-2'
 
 const evISO = (e) => (e.start?.dateTime || e.start?.date || '').slice(0, 10)
 
