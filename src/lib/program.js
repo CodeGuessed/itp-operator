@@ -31,15 +31,16 @@ export function getProgramPosition(date = new Date()) {
   return { phase: phase.name, cycle, week, calories: phase.calories, protein: phase.protein }
 }
 
-// GCal event title parsing — derived from actual calendar data
-// Patterns observed: [N]D6, [D] D6, [OT] HAZMAT training, Dive Day, etc.
+// Event-title parsing — active shift codes are bracketed: [N] [D] [C]/[C##] [OT].
+// Verbose fallbacks (e.g. "Night Shift") use word boundaries so unrelated events
+// like "Roosevelt Midnight DJ set" or "NOT going" are not misread as shifts.
 export function parseShiftFromEvent(summary = '') {
   const s = summary.toUpperCase()
-  if (s.includes('[N]') || s.match(/NIGHT\s*(SHIFT)?/)) return 'NIGHT'
-  if (s.includes('[D]') || s.match(/^DAY\s*(SHIFT)?/) || s.match(/\[D\]/)) return 'DAY'
-  if (s.includes('[C]') || s.match(/C-?SHIFT/)) return 'CSHIFT'
-  if (s.includes('DIVE') || s.match(/DIVE\s*(DAY)?/i)) return 'DIVE'
-  if (s.includes('[OT]') || s.match(/OVERTIME|OT\s/)) return 'OT'
+  if (s.includes('[N]') || /\bNIGHT SHIFT\b/.test(s)) return 'NIGHT'
+  if (s.includes('[D]') || /\bDAY SHIFT\b/.test(s)) return 'DAY'
+  if (s.includes('[C]') || /\[C\d+\]/.test(s) || /\bC-?\d*\s?SHIFT\b/.test(s)) return 'CSHIFT'
+  if (/\bDIVE\b/.test(s)) return 'DIVE'
+  if (s.includes('[OT]') || /\bOVERTIME\b/.test(s)) return 'OT'
   return null
 }
 
