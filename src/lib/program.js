@@ -46,17 +46,17 @@ export function parseShiftFromEvent(summary = '') {
 
 export function getShiftType(events = [], dateStr) {
   const date = dateStr || new Date().toISOString().slice(0, 10)
-  const dayEvents = events.filter(e => {
-    const start = (e.start?.dateTime || e.start?.date || '').slice(0, 10)
-    const end = (e.end?.dateTime || e.end?.date || '').slice(0, 10)
-    return start === date || end === date || (start < date && end > date)
-  })
+  // A shift belongs to the day it STARTS. Matching end-date too would mark the
+  // morning after a night shift (ends ~06:00 next day) as another night shift.
+  const dayEvents = events.filter(
+    e => (e.start?.dateTime || e.start?.date || '').slice(0, 10) === date
+  )
 
   // Check for dive day first (highest priority override)
   const diveEvent = dayEvents.find(e => parseShiftFromEvent(e.summary) === 'DIVE')
   if (diveEvent) return { type: 'DIVE', events: dayEvents }
 
-  // Check for shift events - look at start date primarily
+  // First shift-bearing event that day (OT is a modifier, not a shift type)
   for (const e of dayEvents) {
     const st = parseShiftFromEvent(e.summary)
     if (st && st !== 'OT') return { type: st, events: dayEvents }
