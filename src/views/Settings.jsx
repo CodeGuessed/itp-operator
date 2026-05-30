@@ -13,7 +13,8 @@ export default function Settings({ appState }) {
   const { settings, saveSettings, baselines, saveBaselines, gcalToken, gcalError } = appState
 
   const [anthropicKey,  setAnthropicKey]  = useState(settings.anthropicKey  || '')
-  const [gcalClientId,  setGcalClientId]  = useState(settings.gcalClientId  || '')
+  const [gcalClientId,     setGcalClientId]     = useState(settings.gcalClientId     || '')
+  const [gcalClientSecret, setGcalClientSecret] = useState(settings.gcalClientSecret || '')
   const [localBaselines,setLocalBaselines]= useState({ ...baselines })
   const [notifTimes,    setNotifTimes]    = useState({ ...settings.notificationTimes })
   const [clearConfirm,  setClearConfirm]  = useState(false)
@@ -29,7 +30,7 @@ export default function Settings({ appState }) {
   async function handleConnectGcal() {
     const id = gcalClientId.trim()
     if (!id) { alert('Enter a Google OAuth Client ID first.'); return }
-    saveSettings({ ...settings, gcalClientId: id })
+    saveSettings({ ...settings, gcalClientId: id, gcalClientSecret: gcalClientSecret.trim() })
     const url = await buildAuthUrl(id)
     window.location.href = url
   }
@@ -142,6 +143,19 @@ export default function Settings({ appState }) {
             value={gcalClientId}
             onChange={e => setGcalClientId(e.target.value)}
             placeholder="123456789-abc.apps.googleusercontent.com"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
+
+        <div className="input-group">
+          <label className="input-label">Client Secret <span style={{ color: 'var(--text2)', fontWeight: 400 }}>(optional — only needed if PKCE alone fails)</span></label>
+          <input
+            type="password"
+            className="input-field"
+            value={gcalClientSecret}
+            onChange={e => setGcalClientSecret(e.target.value)}
+            placeholder="GOCSPX-…"
             autoComplete="off"
             spellCheck={false}
           />

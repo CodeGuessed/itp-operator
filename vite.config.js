@@ -35,6 +35,10 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Serve index.html for any navigation URL the SW hasn't explicitly cached
+        // — required so ?code= OAuth callback URLs get the SPA, not a 404
+        navigateFallback: '/itp-operator/index.html',
+        navigateFallbackDenylist: [/\/api\//],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {

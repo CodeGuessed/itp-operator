@@ -36,11 +36,12 @@ export function useAppState() {
     }
     if (!code) return
 
-    const clientId = storage.getSettings().gcalClientId
+    const s = storage.getSettings()
+    const clientId = s.gcalClientId
     if (!clientId) { setGcalError('Client ID missing — re-enter it in Settings.'); return }
 
     setGcalLoading(true)
-    exchangeCodeForToken(code, clientId)
+    exchangeCodeForToken(code, clientId, s.gcalClientSecret || '')
       .then(token => {
         storage.saveGCalToken(token)
         setGcalTokenState(token)

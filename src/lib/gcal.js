@@ -79,21 +79,25 @@ export function parseCodeFromUrl() {
 
 // ── Token exchange ────────────────────────────────────────────────────────────
 
-export async function exchangeCodeForToken(code, clientId) {
+export async function exchangeCodeForToken(code, clientId, clientSecret = '') {
   const verifier = localStorage.getItem(PKCE_KEY)
   localStorage.removeItem(PKCE_KEY)
   if (!verifier) throw new Error('PKCE verifier missing — tap Connect again to restart the auth flow.')
 
+  const body = {
+    code,
+    client_id: clientId,
+    redirect_uri: REDIRECT_URI,
+    grant_type: 'authorization_code',
+    code_verifier: verifier,
+  }
+  // client_secret is optional for PKCE public clients; required for some Web app configs
+  if (clientSecret) body.client_secret = clientSecret
+
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      code,
-      client_id: clientId,
-      redirect_uri: REDIRECT_URI,
-      grant_type: 'authorization_code',
-      code_verifier: verifier,
-    }).toString(),
+    body: new URLSearchParams(body).toString(),
   })
 
   if (!res.ok) {
