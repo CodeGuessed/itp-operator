@@ -1,5 +1,4 @@
-import React, { useState } from 'react'
-import { isTokenValid, JS_ORIGIN } from '../lib/gcal.js'
+import React, { useState, useRef } from 'react'
 import { storage } from '../lib/storage.js'
 
 const SHIFT_NOTIF_LABELS = [
@@ -10,26 +9,43 @@ const SHIFT_NOTIF_LABELS = [
 ]
 
 export default function Settings({ appState }) {
-  const { settings, saveSettings, baselines, saveBaselines, gcalToken, gcalError, connectGcal, disconnectGcal } = appState
+  const { settings, saveSettings, baselines, saveBaselines, importIcs, clearShifts, importInfo } = appState
 
   const [anthropicKey,  setAnthropicKey]  = useState(settings.anthropicKey  || '')
-  const [gcalClientId,  setGcalClientId]  = useState(settings.gcalClientId  || '')
   const [localBaselines,setLocalBaselines]= useState({ ...baselines })
   const [notifTimes,    setNotifTimes]    = useState({ ...settings.notificationTimes })
   const [clearConfirm,  setClearConfirm]  = useState(false)
   const [saveMsg,       setSaveMsg]       = useState('')
-
-  const gcalConnected = settings.gcalConnected && isTokenValid(gcalToken)
+  const [importMsg,     setImportMsg]     = useState(null)
+  const fileInputRef = useRef(null)
 
   function flash(msg = 'Saved') { setSaveMsg(msg); setTimeout(() => setSaveMsg(''), 2500) }
 
   function handleSaveApiKey() { saveSettings({ ...settings, anthropicKey }); flash('API key saved') }
 
-  function handleConnectGcal() {
-    const id = gcalClientId.trim()
-    if (!id) { alert('Enter a Google OAuth Client ID first.'); return }
-    saveSettings({ ...settings, gcalClientId: id })
-    connectGcal()  // opens the GIS popup
+  function handleFilePick(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const result = importIcs(String(reader.result), file.name)
+        setImportMsg({
+          ok: true,
+          text: `${file.name}: scanned ${result.scanned} events, added ${result.added} shifts (${result.total} total).`,
+        })
+      } catch (err) {
+        setImportMsg({ ok: false, text: `Failed to parse ${file.name}: ${err.message}` })
+      }
+    }
+    reader.onerror = () => setImportMsg({ ok: false, text: 'Could not read file.' })
+    reader.readAsText(file)
+    e.target.value = ''  // allow re-importing the same file
+  }
+
+  function handleClearShifts() {
+    clearShifts()
+    setImportMsg({ ok: true, text: 'Imported shifts cleared.' })
   }
 
   function handleSaveBaselines() {
@@ -68,7 +84,7 @@ export default function Settings({ appState }) {
 
   function handleClearData() {
     if (!clearConfirm) { setClearConfirm(true); return }
-    ;['itp_settings','itp_daily_checkins','itp_weekly_reviews','itp_baselines','itp_gcal_cache','itp_gcal_token'].forEach(k => localStorage.removeItem(k))
+    ;['itp_settings','itp_daily_checkins','itp_weekly_reviews','itp_baselines','itp_shift_events'].forEach(k => localStorage.removeItem(k))
     window.location.reload()
   }
 
@@ -102,60 +118,51 @@ export default function Settings({ appState }) {
         <button className="btn btn-full btn-primary" onClick={handleSaveApiKey}>Save API Key</button>
       </div>
 
-      {/* Google Calendar */}
+      {/* Shift Calendar Import (.ics) */}
       <div className="card">
-        <div className="card-title">Google Calendar</div>
+        <div className="card-title">Shift Calendar (.ics import)</div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <span className={`status-dot ${gcalConnected ? 'green' : 'red'}`} />
+          <span className={`status-dot ${importInfo.count > 0 ? 'green' : 'red'}`} />
           <span style={{ fontSize: '0.8rem', fontFamily: 'Space Mono, monospace' }}>
-            {gcalConnected ? 'Connected' : 'Disconnected'}
+            {importInfo.count > 0
+              ? `${importInfo.count} shifts loaded`
+              : 'No shifts imported'}
           </span>
         </div>
 
-        {/* Show any OAuth error from callback */}
-        {gcalError && (
-          <div style={{ padding: '8px 10px', border: '1px solid var(--red)', color: 'var(--red)', fontSize: '0.75rem', marginBottom: 12, fontFamily: 'Space Mono, monospace' }}>
-            {gcalError}
+        {importInfo.importedAt && (
+          <div style={{ fontSize: '0.7rem', color: 'var(--text2)', marginBottom: 10, fontFamily: 'Space Mono, monospace' }}>
+            Last import: {new Date(importInfo.importedAt).toLocaleDateString('en-NZ')} {importInfo.lastFile ? `· ${importInfo.lastFile}` : ''}
           </div>
         )}
 
-        <div className="input-group">
-          <label className="input-label">OAuth 2.0 Client ID</label>
-          <input
-            type="text"
-            className="input-field"
-            value={gcalClientId}
-            onChange={e => setGcalClientId(e.target.value)}
-            placeholder="123456789-abc.apps.googleusercontent.com"
-            autoComplete="off"
-            spellCheck={false}
-          />
+        {importMsg && (
+          <div style={{ padding: '8px 10px', border: `1px solid var(--${importMsg.ok ? 'green' : 'red'})`, color: `var(--${importMsg.ok ? 'green' : 'red'})`, fontSize: '0.72rem', marginBottom: 12, fontFamily: 'Space Mono, monospace', lineHeight: 1.5 }}>
+            {importMsg.text}
+          </div>
+        )}
+
+        <div style={{ fontSize: '0.72rem', color: 'var(--text2)', marginBottom: 12, lineHeight: 1.5 }}>
+          Export your work calendar as an <span className="mono">.ics</span> file and load it here. Shifts are detected from event titles
+          (<span className="mono">[N]</span>=Night, <span className="mono">[D]</span>=Day, <span className="mono">[C]</span>/C-Shift, Dive, <span className="mono">[OT]</span>).
+          Re-import anytime to refresh; entries merge and de-duplicate.
         </div>
 
-        {/* Authorized JavaScript origin — the only Console setting GIS needs */}
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text2)', marginBottom: 4 }}>
-            Add this to "Authorized JavaScript origins" in Google Cloud Console
-          </div>
-          <div
-            style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.72rem', color: 'var(--accent)', padding: '6px 8px', background: 'var(--surface2)', border: '1px solid var(--border)', wordBreak: 'break-all', cursor: 'pointer' }}
-            onClick={() => navigator.clipboard?.writeText(JS_ORIGIN).then(() => flash('Copied!'))}
-            title="Tap to copy"
-          >
-            {JS_ORIGIN}
-          </div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text2)', marginTop: 3 }}>
-            Tap to copy. No redirect URI needed — this flow uses a popup.
-          </div>
-        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".ics,text/calendar"
+          onChange={handleFilePick}
+          style={{ display: 'none' }}
+        />
 
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleConnectGcal}>
-            {gcalConnected ? 'Reconnect' : 'Connect Google Calendar'}
+          <button className="btn btn-primary" style={{ flex: 2 }} onClick={() => fileInputRef.current?.click()}>
+            Import .ics File
           </button>
-          {gcalConnected && (
-            <button className="btn btn-danger" style={{ flex: 1 }} onClick={disconnectGcal}>Disconnect</button>
+          {importInfo.count > 0 && (
+            <button className="btn btn-danger" style={{ flex: 1 }} onClick={handleClearShifts}>Clear</button>
           )}
         </div>
       </div>

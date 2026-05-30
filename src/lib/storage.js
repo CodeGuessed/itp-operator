@@ -5,8 +5,7 @@ const KEYS = {
   DAILY_CHECKINS: 'itp_daily_checkins',
   WEEKLY_REVIEWS: 'itp_weekly_reviews',
   BASELINES: 'itp_baselines',
-  GCAL_CACHE: 'itp_gcal_cache',
-  GCAL_TOKEN: 'itp_gcal_token',
+  SHIFT_EVENTS: 'itp_shift_events',
 }
 
 const get = (key) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null } catch { return null } }
@@ -59,10 +58,9 @@ export const storage = {
     return all.slice(-n)
   },
 
-  // GCal cache
-  getGCalCache: () => get(KEYS.GCAL_CACHE) || { events: [], cachedAt: null },
-  saveGCalCache: (data) => set(KEYS.GCAL_CACHE, { ...data, cachedAt: Date.now() }),
-  getGCalToken: () => get(KEYS.GCAL_TOKEN),
-  saveGCalToken: (t) => set(KEYS.GCAL_TOKEN, t),
-  clearGCalToken: () => localStorage.removeItem(KEYS.GCAL_TOKEN),
+  // Imported shift events (.ics) — persistent, no expiry
+  getShiftEvents: () => get(KEYS.SHIFT_EVENTS) || { events: [], importedAt: null, count: 0, lastFile: null },
+  saveShiftEvents: (events, meta = {}) =>
+    set(KEYS.SHIFT_EVENTS, { events, importedAt: Date.now(), count: events.length, ...meta }),
+  clearShiftEvents: () => localStorage.removeItem(KEYS.SHIFT_EVENTS),
 }

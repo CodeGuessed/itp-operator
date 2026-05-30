@@ -130,9 +130,9 @@ function EodCard({ existing, onSave }) {
 }
 
 export default function Today({ appState }) {
-  const { programPosition, todayCheckin, saveCheckin, todayShift, gcalLoading, baselines } = appState
+  const { programPosition, todayCheckin, saveCheckin, todayShift, baselines } = appState
 
-  // Initialise form from saved checkin or GCal-detected shift
+  // Initialise form from saved checkin or imported-calendar shift
   const [form, setForm] = useState(() => ({
     hrv:           todayCheckin?.hrv           || null,
     sleep:         todayCheckin?.sleep         || null,
@@ -189,14 +189,12 @@ export default function Today({ appState }) {
         </div>
       </div>
 
-      {/* GCal shift context + overrides */}
+      {/* Calendar shift context + overrides */}
       <div className="gcal-strip">
         <span className="gcal-detected">
-          {gcalLoading
-            ? 'GCal loading…'
-            : todayShift?.type
-              ? <>GCal: <strong>{todayShift.type}</strong></>
-              : 'GCal: no shift detected'}
+          {todayShift?.type && todayShift.type !== 'OFF'
+            ? <>Calendar: <strong>{todayShift.type}</strong></>
+            : 'Calendar: OFF / no shift'}
         </span>
         {SHIFT_OPTS.map(opt => (
           <button

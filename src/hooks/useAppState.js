@@ -1,85 +1,76 @@
 // hooks/useAppState.js
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { storage } from '../lib/storage.js'
-import {
-  requestAccessToken,
-  isTokenValid,
-  fetchCalendarEvents,
-  setCachedEvents,
-  getCachedEvents,
-} from '../lib/gcal.js'
-import { getProgramPosition, getShiftType } from '../lib/program.js'
+import { parseICS } from '../lib/ics.js'
+import { getProgramPosition, getShiftType, parseShiftFromEvent } from '../lib/program.js'
+
+// Keep imported shifts within a sensible window so localStorage stays small
+const WINDOW_PAST_DAYS = 30
+const WINDOW_FUTURE_DAYS = 150
 
 export function useAppState() {
   const [settings, setSettingsState] = useState(storage.getSettings)
   const [baselines, setBaselinesState] = useState(storage.getBaselines)
   const [todayCheckin, setTodayCheckin] = useState(storage.getTodayCheckin)
-  const [gcalEvents, setGcalEvents] = useState([])
-  const [gcalToken, setGcalTokenState] = useState(storage.getGCalToken)
-  const [gcalLoading, setGcalLoading] = useState(false)
-  const [gcalError, setGcalError] = useState(null)
+
+  const [shiftEvents, setShiftEvents] = useState(() => storage.getShiftEvents().events)
+  const [importInfo, setImportInfo] = useState(() => {
+    const s = storage.getShiftEvents()
+    return { count: s.count || 0, importedAt: s.importedAt, lastFile: s.lastFile }
+  })
+
   const [view, setView] = useState('today')
 
   const today = new Date().toISOString().slice(0, 10)
   const programPosition = getProgramPosition()
 
-  // Load GCal events when token is available
-  useEffect(() => {
-    const cached = getCachedEvents()
-    if (cached?.length) { setGcalEvents(cached); return }
-    if (gcalToken && isTokenValid(gcalToken)) { loadGcalEvents(gcalToken) }
-  }, [gcalToken])
+  // ── ICS import ────────────────────────────────────────────────────────────
+  const importIcs = useCallback((text, fileName = '') => {
+    const all = parseICS(text)
+    const now = Date.now()
+    const winStart = now - WINDOW_PAST_DAYS * 86400000
+    const winEnd = now + WINDOW_FUTURE_DAYS * 86400000
 
-  const loadGcalEvents = useCallback(async (token) => {
-    if (!token || !isTokenValid(token)) return
-    setGcalLoading(true); setGcalError(null)
-    try {
-      const events = await fetchCalendarEvents(token.access_token)
-      setCachedEvents(events)
-      setGcalEvents(events)
-    } catch (e) {
-      setGcalError(e.message)
-      if (e.message.includes('401')) { storage.clearGCalToken(); setGcalTokenState(null) }
-    } finally { setGcalLoading(false) }
-  }, [])
+    // Keep only shift-bearing events within the window
+    const relevant = all.filter((e) => {
+      if (!parseShiftFromEvent(e.summary)) return false
+      const ds = e.start?.dateTime || e.start?.date
+      if (!ds) return false
+      const t = new Date(ds).getTime()
+      return !Number.isNaN(t) && t >= winStart && t <= winEnd
+    })
 
-  // Trigger the GIS popup, store the token, fetch events
-  const connectGcal = useCallback(async () => {
-    const clientId = storage.getSettings().gcalClientId
-    if (!clientId) { setGcalError('Enter a Client ID first.'); return }
-    setGcalLoading(true); setGcalError(null)
-    try {
-      const token = await requestAccessToken(clientId)
-      storage.saveGCalToken(token)
-      setGcalTokenState(token)
-      const s = { ...storage.getSettings(), gcalConnected: true }
-      storage.saveSettings(s)
-      setSettingsState(s)
-      await loadGcalEvents(token)
-    } catch (e) {
-      setGcalError(e.message)
-    } finally {
-      setGcalLoading(false)
+    // Merge with existing imports, dedupe by summary + start-date
+    const existing = storage.getShiftEvents().events
+    const map = new Map()
+    for (const e of [...existing, ...relevant]) {
+      const key = `${e.summary}|${(e.start?.dateTime || e.start?.date || '').slice(0, 10)}`
+      map.set(key, e)
     }
-  }, [loadGcalEvents])
+    const merged = [...map.values()]
 
-  const disconnectGcal = useCallback(() => {
-    storage.clearGCalToken()
-    setGcalTokenState(null)
-    setGcalEvents([])
-    const s = { ...storage.getSettings(), gcalConnected: false }
-    storage.saveSettings(s)
-    setSettingsState(s)
+    storage.saveShiftEvents(merged, { lastFile: fileName })
+    setShiftEvents(merged)
+    setImportInfo({ count: merged.length, importedAt: Date.now(), lastFile: fileName })
+
+    return { scanned: all.length, added: relevant.length, total: merged.length }
   }, [])
 
-  const refreshGcal = useCallback(() => {
-    if (gcalToken && isTokenValid(gcalToken)) loadGcalEvents(gcalToken)
-  }, [gcalToken, loadGcalEvents])
+  const clearShifts = useCallback(() => {
+    storage.clearShiftEvents()
+    setShiftEvents([])
+    setImportInfo({ count: 0, importedAt: null, lastFile: null })
+  }, [])
 
-  const todayShift  = getShiftType(gcalEvents, today)
-  const tomorrowShift = getShiftType(gcalEvents, new Date(Date.now() + 86400000).toISOString().slice(0, 10))
+  // ── Shift detection from imported events ────────────────────────────────────
+  const todayShift = getShiftType(shiftEvents, today)
+  const tomorrowShift = getShiftType(
+    shiftEvents,
+    new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+  )
 
-  const saveSettings  = useCallback((s) => { storage.saveSettings(s);  setSettingsState(s)  }, [])
+  // ── Settings / baselines / check-ins ────────────────────────────────────────
+  const saveSettings = useCallback((s) => { storage.saveSettings(s); setSettingsState(s) }, [])
   const saveBaselines = useCallback((b) => { storage.saveBaselines(b); setBaselinesState(b) }, [])
 
   const saveCheckin = useCallback((entry) => {
@@ -92,10 +83,8 @@ export function useAppState() {
     settings, saveSettings,
     baselines, saveBaselines,
     todayCheckin, saveCheckin,
-    gcalEvents, gcalLoading, gcalError, refreshGcal,
-    connectGcal, disconnectGcal,
-    gcalToken, setGcalTokenState,
     todayShift, tomorrowShift,
+    shiftEvents, importInfo, importIcs, clearShifts,
     programPosition,
     view, setView,
     today,
