@@ -16,7 +16,9 @@ Shift-aware recovery operating system for a 42-week integrated training program.
 
 ## Google Cloud Console Setup — OAuth 2.0 Client ID
 
-The app uses the **PKCE authorization code flow** (`response_type=code`). No client secret is required.
+The app uses **Google Identity Services (GIS)** with the token model — a popup-based
+flow. No redirect URI and no client secret are required; only an authorized
+JavaScript origin.
 
 1. Go to [console.cloud.google.com](https://console.cloud.google.com)
 2. Create a new project (or select an existing one)
@@ -26,7 +28,7 @@ The app uses the **PKCE authorization code flow** (`response_type=code`). No cli
 4. Configure OAuth consent screen:
    - Navigate to **APIs & Services → OAuth consent screen**
    - User Type: **External**
-   - Fill in App name (`ITP Operator`), your email as support email
+   - Fill in App name (`ITP Operator`), your email as support email and developer contact
    - Add scope: `https://www.googleapis.com/auth/calendar.readonly`
    - Add your Google account as a **Test user**
    - Save and continue
@@ -39,16 +41,13 @@ The app uses the **PKCE authorization code flow** (`response_type=code`). No cli
      ```
      https://CodeGuessed.github.io
      ```
-   - Under **Authorized redirect URIs**, add:
-     ```
-     https://CodeGuessed.github.io/itp-operator/
-     ```
+   - (No **Authorized redirect URIs** entry is needed for the GIS token flow.)
    - Click **Create**
 6. Copy the **Client ID** (format: `123456789-abc.apps.googleusercontent.com`)
 
-> **Note:** You do **not** need the Client Secret. The app uses PKCE, which is the
-> modern replacement for the deprecated implicit (`response_type=token`) flow and
-> works without a secret for public clients.
+> **Note:** The GIS token model uses a popup and `postMessage`, not a full-page
+> redirect. This avoids redirect-URI matching and works reliably inside an
+> installed iOS PWA. The only Console requirement is the JavaScript origin above.
 
 ---
 

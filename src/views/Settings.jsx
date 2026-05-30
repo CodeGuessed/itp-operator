@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { buildAuthUrl, previewAuthUrl, isTokenValid, REDIRECT_URI } from '../lib/gcal.js'
+import { isTokenValid, JS_ORIGIN } from '../lib/gcal.js'
 import { storage } from '../lib/storage.js'
 
 const SHIFT_NOTIF_LABELS = [
@@ -10,16 +10,14 @@ const SHIFT_NOTIF_LABELS = [
 ]
 
 export default function Settings({ appState }) {
-  const { settings, saveSettings, baselines, saveBaselines, gcalToken, gcalError } = appState
+  const { settings, saveSettings, baselines, saveBaselines, gcalToken, gcalError, connectGcal, disconnectGcal } = appState
 
   const [anthropicKey,  setAnthropicKey]  = useState(settings.anthropicKey  || '')
-  const [gcalClientId,     setGcalClientId]     = useState(settings.gcalClientId     || '')
-  const [gcalClientSecret, setGcalClientSecret] = useState(settings.gcalClientSecret || '')
+  const [gcalClientId,  setGcalClientId]  = useState(settings.gcalClientId  || '')
   const [localBaselines,setLocalBaselines]= useState({ ...baselines })
   const [notifTimes,    setNotifTimes]    = useState({ ...settings.notificationTimes })
   const [clearConfirm,  setClearConfirm]  = useState(false)
   const [saveMsg,       setSaveMsg]       = useState('')
-  const [authUrlPreview,setAuthUrlPreview]= useState('')
 
   const gcalConnected = settings.gcalConnected && isTokenValid(gcalToken)
 
@@ -27,24 +25,11 @@ export default function Settings({ appState }) {
 
   function handleSaveApiKey() { saveSettings({ ...settings, anthropicKey }); flash('API key saved') }
 
-  async function handleConnectGcal() {
+  function handleConnectGcal() {
     const id = gcalClientId.trim()
     if (!id) { alert('Enter a Google OAuth Client ID first.'); return }
-    saveSettings({ ...settings, gcalClientId: id, gcalClientSecret: gcalClientSecret.trim() })
-    const url = await buildAuthUrl(id)
-    window.location.href = url
-  }
-
-  async function handlePreviewAuthUrl() {
-    const id = gcalClientId.trim()
-    if (!id) { alert('Enter a Client ID first.'); return }
-    const url = await previewAuthUrl(id)  // no side effects — does not touch stored verifier
-    setAuthUrlPreview(url)
-  }
-
-  function handleDisconnectGcal() {
-    storage.clearGCalToken()
-    saveSettings({ ...settings, gcalConnected: false })
+    saveSettings({ ...settings, gcalClientId: id })
+    connectGcal()  // opens the GIS popup
   }
 
   function handleSaveBaselines() {
@@ -148,58 +133,31 @@ export default function Settings({ appState }) {
           />
         </div>
 
-        <div className="input-group">
-          <label className="input-label">Client Secret <span style={{ color: 'var(--text2)', fontWeight: 400 }}>(optional — only needed if PKCE alone fails)</span></label>
-          <input
-            type="password"
-            className="input-field"
-            value={gcalClientSecret}
-            onChange={e => setGcalClientSecret(e.target.value)}
-            placeholder="GOCSPX-…"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </div>
-
-        {/* Redirect URI — must match Google Cloud Console exactly */}
+        {/* Authorized JavaScript origin — the only Console setting GIS needs */}
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text2)', marginBottom: 4 }}>
-            Register this exact Redirect URI in Google Cloud Console
+            Add this to "Authorized JavaScript origins" in Google Cloud Console
           </div>
           <div
-            style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.7rem', color: 'var(--accent)', padding: '6px 8px', background: 'var(--surface2)', border: '1px solid var(--border)', wordBreak: 'break-all', cursor: 'pointer' }}
-            onClick={() => navigator.clipboard?.writeText(REDIRECT_URI).then(() => flash('Copied!'))}
+            style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.72rem', color: 'var(--accent)', padding: '6px 8px', background: 'var(--surface2)', border: '1px solid var(--border)', wordBreak: 'break-all', cursor: 'pointer' }}
+            onClick={() => navigator.clipboard?.writeText(JS_ORIGIN).then(() => flash('Copied!'))}
             title="Tap to copy"
           >
-            {REDIRECT_URI}
+            {JS_ORIGIN}
           </div>
           <div style={{ fontSize: '0.65rem', color: 'var(--text2)', marginTop: 3 }}>
-            Tap to copy · Also add <span className="mono" style={{ color: 'var(--text2)' }}>{window.location.origin}</span> to Authorized JavaScript Origins
+            Tap to copy. No redirect URI needed — this flow uses a popup.
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleConnectGcal}>
             {gcalConnected ? 'Reconnect' : 'Connect Google Calendar'}
           </button>
           {gcalConnected && (
-            <button className="btn btn-danger" style={{ flex: 1 }} onClick={handleDisconnectGcal}>Disconnect</button>
+            <button className="btn btn-danger" style={{ flex: 1 }} onClick={disconnectGcal}>Disconnect</button>
           )}
         </div>
-
-        {/* Auth URL preview for troubleshooting */}
-        <button
-          className="btn btn-full"
-          style={{ fontSize: '0.7rem', minHeight: 36, color: 'var(--text2)', borderColor: 'var(--border)' }}
-          onClick={handlePreviewAuthUrl}
-        >
-          Preview Auth URL (troubleshoot)
-        </button>
-        {authUrlPreview && (
-          <div style={{ marginTop: 8, padding: '8px', background: 'var(--surface2)', border: '1px solid var(--border)', fontSize: '0.6rem', fontFamily: 'Space Mono, monospace', wordBreak: 'break-all', color: 'var(--text2)' }}>
-            {authUrlPreview}
-          </div>
-        )}
       </div>
 
       {/* Baselines */}

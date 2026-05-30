@@ -1,117 +1,78 @@
-// lib/gcal.js — Google Calendar OAuth (PKCE / authorization code flow)
+// lib/gcal.js — Google Calendar via Google Identity Services (GIS) token model
+//
+// Uses google.accounts.oauth2.initTokenClient — a popup-based flow that returns
+// an access token directly. No redirect, no PKCE storage, no service-worker
+// callback interception, no redirect-URI matching. Requires only that the app's
+// origin is listed under "Authorized JavaScript origins" on the OAuth client.
 
 const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly'
 const CACHE_KEY = 'itp_gcal_cache'
 const CACHE_TTL = 6 * 60 * 60 * 1000 // 6 hours
-// localStorage (not sessionStorage) — survives iOS PWA backgrounding during redirect
-const PKCE_KEY = 'itp_pkce_verifier'
 
-export const REDIRECT_URI = (() => {
-  const { origin, pathname } = window.location
-  const base = pathname.startsWith('/itp-operator') ? '/itp-operator/' : '/'
-  return origin + base
-})()
+export const JS_ORIGIN = window.location.origin
 
 export function getGCalClientId() {
   try { return JSON.parse(localStorage.getItem('itp_settings'))?.gcalClientId || '' } catch { return '' }
 }
 
-// ── PKCE helpers ──────────────────────────────────────────────────────────────
+// ── GIS readiness ─────────────────────────────────────────────────────────────
 
-function generateVerifier() {
-  const arr = new Uint8Array(32)
-  crypto.getRandomValues(arr)
-  return btoa(Array.from(arr, b => String.fromCharCode(b)).join(''))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+export function isGisReady() {
+  return !!(window.google && window.google.accounts && window.google.accounts.oauth2)
 }
 
-async function deriveChallenge(verifier) {
-  const encoded = new TextEncoder().encode(verifier)
-  const digest = await crypto.subtle.digest('SHA-256', encoded)
-  return btoa(Array.from(new Uint8Array(digest), b => String.fromCharCode(b)).join(''))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-function buildUrlFromChallenge(clientId, challenge) {
-  const qs = [
-    `client_id=${encodeURIComponent(clientId)}`,
-    `redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
-    `response_type=code`,
-    `scope=${encodeURIComponent(SCOPES)}`,
-    `code_challenge=${challenge}`,
-    `code_challenge_method=S256`,
-    `prompt=select_account`,
-  ].join('&')
-  return `https://accounts.google.com/o/oauth2/v2/auth?${qs}`
-}
-
-// ── Auth URL — stores verifier in localStorage, survives iOS background ───────
-
-export async function buildAuthUrl(clientId) {
-  const verifier = generateVerifier()
-  const challenge = await deriveChallenge(verifier)
-  localStorage.setItem(PKCE_KEY, verifier)   // localStorage, not sessionStorage
-  return buildUrlFromChallenge(clientId, challenge)
-}
-
-// ── Preview URL — no side effects, does not touch stored verifier ─────────────
-
-export async function previewAuthUrl(clientId) {
-  const verifier = generateVerifier()
-  const challenge = await deriveChallenge(verifier)
-  return buildUrlFromChallenge(clientId, challenge)
-}
-
-// ── Callback parsing ──────────────────────────────────────────────────────────
-
-export function parseCodeFromUrl() {
-  const params = new URLSearchParams(window.location.search)
-  const error = params.get('error')
-  if (error) {
-    history.replaceState(null, '', window.location.pathname)
-    throw new Error(`Google OAuth error: ${error}`)
-  }
-  const code = params.get('code')
-  if (!code) return null
-  history.replaceState(null, '', window.location.pathname)
-  return code
-}
-
-// ── Token exchange ────────────────────────────────────────────────────────────
-
-export async function exchangeCodeForToken(code, clientId, clientSecret = '') {
-  const verifier = localStorage.getItem(PKCE_KEY)
-  localStorage.removeItem(PKCE_KEY)
-  if (!verifier) throw new Error('PKCE verifier missing — tap Connect again to restart the auth flow.')
-
-  const body = {
-    code,
-    client_id: clientId,
-    redirect_uri: REDIRECT_URI,
-    grant_type: 'authorization_code',
-    code_verifier: verifier,
-  }
-  // client_secret is optional for PKCE public clients; required for some Web app configs
-  if (clientSecret) body.client_secret = clientSecret
-
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams(body).toString(),
+// Wait for the gsi/client script to finish loading (up to ~10s)
+function waitForGis(timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    if (isGisReady()) { resolve(); return }
+    const start = Date.now()
+    const tick = setInterval(() => {
+      if (isGisReady()) { clearInterval(tick); resolve() }
+      else if (Date.now() - start > timeoutMs) {
+        clearInterval(tick)
+        reject(new Error('Google library failed to load — check your connection and retry.'))
+      }
+    }, 100)
   })
+}
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.error_description || err.error || `Token exchange ${res.status}`)
-  }
+// ── Request access token (opens Google popup) ─────────────────────────────────
 
-  const data = await res.json()
-  return {
-    access_token: data.access_token,
-    expires_in: data.expires_in,
-    expires_at: Date.now() + data.expires_in * 1000,
-    token_type: data.token_type,
-  }
+export async function requestAccessToken(clientId) {
+  await waitForGis()
+
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const client = window.google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: SCOPES,
+      callback: (resp) => {
+        if (settled) return
+        settled = true
+        if (resp.error) {
+          reject(new Error(resp.error_description || resp.error))
+          return
+        }
+        resolve({
+          access_token: resp.access_token,
+          expires_in: resp.expires_in,
+          expires_at: Date.now() + (resp.expires_in || 3600) * 1000,
+          token_type: resp.token_type || 'Bearer',
+        })
+      },
+      error_callback: (err) => {
+        if (settled) return
+        settled = true
+        // err.type: 'popup_closed' | 'popup_failed_to_open' | etc.
+        const map = {
+          popup_closed: 'Authorization popup closed before completing.',
+          popup_failed_to_open: 'Popup blocked — allow popups for this site and retry.',
+        }
+        reject(new Error(map[err?.type] || err?.message || 'Authorization failed.'))
+      },
+    })
+    client.requestAccessToken({ prompt: 'consent' })
+  })
 }
 
 // ── Token validation ──────────────────────────────────────────────────────────

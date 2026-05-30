@@ -2,8 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { storage } from '../lib/storage.js'
 import {
-  parseCodeFromUrl,
-  exchangeCodeForToken,
+  requestAccessToken,
   isTokenValid,
   fetchCalendarEvents,
   setCachedEvents,
@@ -24,35 +23,6 @@ export function useAppState() {
   const today = new Date().toISOString().slice(0, 10)
   const programPosition = getProgramPosition()
 
-  // Handle GCal PKCE callback — ?code= on success, ?error= on failure
-  useEffect(() => {
-    let code
-    try {
-      code = parseCodeFromUrl()
-    } catch (e) {
-      // Google returned ?error=... — surface it so the user sees what went wrong
-      setGcalError(e.message)
-      return
-    }
-    if (!code) return
-
-    const s = storage.getSettings()
-    const clientId = s.gcalClientId
-    if (!clientId) { setGcalError('Client ID missing — re-enter it in Settings.'); return }
-
-    setGcalLoading(true)
-    exchangeCodeForToken(code, clientId, s.gcalClientSecret || '')
-      .then(token => {
-        storage.saveGCalToken(token)
-        setGcalTokenState(token)
-        const s = { ...storage.getSettings(), gcalConnected: true }
-        storage.saveSettings(s)
-        setSettingsState(s)
-      })
-      .catch(e => setGcalError(`Token exchange failed: ${e.message}`))
-      .finally(() => setGcalLoading(false))
-  }, [])
-
   // Load GCal events when token is available
   useEffect(() => {
     const cached = getCachedEvents()
@@ -71,6 +41,35 @@ export function useAppState() {
       setGcalError(e.message)
       if (e.message.includes('401')) { storage.clearGCalToken(); setGcalTokenState(null) }
     } finally { setGcalLoading(false) }
+  }, [])
+
+  // Trigger the GIS popup, store the token, fetch events
+  const connectGcal = useCallback(async () => {
+    const clientId = storage.getSettings().gcalClientId
+    if (!clientId) { setGcalError('Enter a Client ID first.'); return }
+    setGcalLoading(true); setGcalError(null)
+    try {
+      const token = await requestAccessToken(clientId)
+      storage.saveGCalToken(token)
+      setGcalTokenState(token)
+      const s = { ...storage.getSettings(), gcalConnected: true }
+      storage.saveSettings(s)
+      setSettingsState(s)
+      await loadGcalEvents(token)
+    } catch (e) {
+      setGcalError(e.message)
+    } finally {
+      setGcalLoading(false)
+    }
+  }, [loadGcalEvents])
+
+  const disconnectGcal = useCallback(() => {
+    storage.clearGCalToken()
+    setGcalTokenState(null)
+    setGcalEvents([])
+    const s = { ...storage.getSettings(), gcalConnected: false }
+    storage.saveSettings(s)
+    setSettingsState(s)
   }, [])
 
   const refreshGcal = useCallback(() => {
@@ -94,6 +93,7 @@ export function useAppState() {
     baselines, saveBaselines,
     todayCheckin, saveCheckin,
     gcalEvents, gcalLoading, gcalError, refreshGcal,
+    connectGcal, disconnectGcal,
     gcalToken, setGcalTokenState,
     todayShift, tomorrowShift,
     programPosition,
