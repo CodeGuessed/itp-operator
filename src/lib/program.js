@@ -10,12 +10,23 @@ export const PHASES = [
   { name: 'POLISH', start: '2027-02-03', end: '2027-03-15', calories: 3000, protein: [190, 200], cycles: [7],       model: 'Maintain' },
 ]
 
-// 6-week (42-day) cycles anchored to May 25, 2026
-export const CYCLE_STARTS = {
-  1: '2026-05-25', 2: '2026-07-06', 3: '2026-08-17',
-  4: '2026-09-28', 5: '2026-11-09', 6: '2026-12-21',
-  7: '2027-02-01',
-}
+// Authoritative cycle/week start dates, extracted from ICS v6.9 (the program
+// calendar). Week boundaries are irregular — they track the shift rotation, not
+// fixed 7-day blocks — so this is a lookup table, not arithmetic. [cycle, week, startISO]
+export const CYCLE_WEEK_STARTS = [
+  [1,1,'2026-05-25'],[1,2,'2026-06-01'],[1,3,'2026-06-08'],[1,4,'2026-06-15'],[1,5,'2026-06-24'],[1,6,'2026-07-04'],
+  [2,1,'2026-07-08'],[2,2,'2026-07-13'],[2,3,'2026-07-24'],[2,4,'2026-07-29'],[2,5,'2026-08-07'],[2,6,'2026-08-15'],
+  [3,1,'2026-08-21'],[3,2,'2026-08-28'],[3,3,'2026-08-31'],[3,4,'2026-09-11'],[3,5,'2026-09-18'],[3,6,'2026-09-26'],
+  [4,1,'2026-10-03'],[4,2,'2026-10-10'],[4,3,'2026-10-17'],[4,4,'2026-10-24'],[4,5,'2026-10-31'],[4,6,'2026-11-07'],
+  [5,1,'2026-11-14'],[5,2,'2026-11-21'],[5,3,'2026-11-28'],[5,4,'2026-12-05'],[5,5,'2026-12-12'],[5,6,'2026-12-19'],
+  [6,1,'2026-12-26'],[6,2,'2027-01-02'],[6,3,'2027-01-09'],[6,4,'2027-01-16'],[6,5,'2027-01-23'],[6,6,'2027-01-30'],
+  [7,1,'2027-02-06'],[7,2,'2027-02-13'],[7,3,'2027-02-20'],[7,4,'2027-02-27'],[7,5,'2027-03-07'],
+]
+
+// Cycle start dates (C# W1) — derived for backward compatibility
+export const CYCLE_STARTS = Object.fromEntries(
+  CYCLE_WEEK_STARTS.filter(([, w]) => w === 1).map(([c, , d]) => [c, d])
+)
 
 // Periodization model by cycle (v6.9)
 export const CYCLE_MODEL = {
@@ -24,20 +35,25 @@ export const CYCLE_MODEL = {
   7: 'Maintain',
 }
 
+// Local YYYY-MM-DD (avoids UTC off-by-one near midnight)
+function toLocalISO(date) {
+  if (typeof date === 'string') return date.slice(0, 10)
+  const d = date
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export function getProgramPosition(date = new Date()) {
-  const d = typeof date === 'string' ? new Date(date) : date
+  const iso = toLocalISO(date)
 
-  let cycle = 1, week = 1
-  const entries = Object.entries(CYCLE_STARTS).sort((a, b) => new Date(a[1]) - new Date(b[1]))
-  for (const [c, start] of entries) {
-    if (d >= new Date(start)) { cycle = parseInt(c) }
+  // Find the latest cycle/week boundary on or before today
+  let cur = CYCLE_WEEK_STARTS[0]
+  for (const e of CYCLE_WEEK_STARTS) {
+    if (e[2] <= iso) cur = e
+    else break
   }
-  const cycleStart = new Date(CYCLE_STARTS[cycle])
-  const daysSince = Math.floor((d - cycleStart) / (1000 * 60 * 60 * 24))
-  week = Math.min(6, Math.floor(daysSince / 7) + 1)
+  const [cycle, week] = cur
 
-  // v6.9: phase follows cycle number (BUILD=1-3, LEAN=4-6, POLISH=7),
-  // not calendar date — keeps phase/cycle consistent at boundaries.
+  // Phase follows cycle number (BUILD=1-3, LEAN=4-6, POLISH=7)
   const phase = PHASES.find(p => p.cycles.includes(cycle)) || PHASES[0]
 
   return { phase: phase.name, cycle, week, calories: phase.calories, protein: phase.protein, model: phase.model }

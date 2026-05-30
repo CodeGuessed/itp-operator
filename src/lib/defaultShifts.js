@@ -1,69 +1,52 @@
-// lib/defaultShifts.js — the work rotation, embedded in code (no file import needed)
+// lib/defaultShifts.js — the work shift schedule, embedded in code.
 //
-// 6-week (42-day) cycle anchored to 2026-05-27, repeating indefinitely.
-// 21 shifts/cycle: 7 Night, 7 Day, 6 C-shift, 1 recurring OT.
-// Plus one one-time OT (2026-06-01).
-// Source of truth confirmed against the user's roster.
+// Source of truth: ICS v6.9 (the program calendar). Shifts are derived from the
+// shift-context training sessions it schedules (Night/Day/C-Shift pre-sessions),
+// so this work calendar is guaranteed consistent with the program. Explicit
+// dates across the whole 42-week program — no recurring rule, no OT days.
+// Cycle 1 = 7 Night + 7 Day + 7 C-shift = 21 shifts.
 
-import { buildShiftEvent, addDaysISO } from './shiftCodes.js'
+import { buildShiftEvent } from './shiftCodes.js'
 
-const CYCLE_ANCHOR = '2026-05-27'
-const CYCLE_DAYS = 42
-
-// Day offsets from the cycle anchor → shift type (repeat every cycle)
-const RECURRING = [
-  // Night
-  { off: 0,  type: 'NIGHT' }, { off: 1,  type: 'NIGHT' },
-  { off: 16, type: 'NIGHT' }, { off: 17, type: 'NIGHT' }, { off: 18, type: 'NIGHT' },
-  { off: 40, type: 'NIGHT' }, { off: 41, type: 'NIGHT' },
-  // Day
-  { off: 6,  type: 'DAY' },   { off: 7,  type: 'DAY' },   { off: 8,  type: 'DAY' },
-  { off: 23, type: 'DAY' },   { off: 24, type: 'DAY' },   { off: 25, type: 'DAY' }, { off: 26, type: 'DAY' },
-  // C-shift
-  { off: 10, type: 'CSHIFT' },{ off: 11, type: 'CSHIFT' },
-  { off: 33, type: 'CSHIFT' },{ off: 34, type: 'CSHIFT' },{ off: 36, type: 'CSHIFT' }, { off: 37, type: 'CSHIFT' },
-  // Recurring OT
-  { off: 35, type: 'OT' },
+export const WORK_SHIFTS = [
+  ['2026-05-27','NIGHT'],['2026-05-28','NIGHT'],
+  ['2026-06-02','DAY'],['2026-06-03','DAY'],['2026-06-04','DAY'],
+  ['2026-06-06','CSHIFT'],['2026-06-07','CSHIFT'],
+  ['2026-06-12','NIGHT'],['2026-06-13','NIGHT'],['2026-06-14','NIGHT'],
+  ['2026-06-19','DAY'],['2026-06-20','DAY'],['2026-06-21','DAY'],['2026-06-22','DAY'],
+  ['2026-06-29','CSHIFT'],['2026-06-30','CSHIFT'],['2026-07-01','CSHIFT'],['2026-07-02','CSHIFT'],['2026-07-03','CSHIFT'],
+  ['2026-07-06','NIGHT'],['2026-07-07','NIGHT'],
+  ['2026-07-20','DAY'],['2026-07-21','DAY'],['2026-07-22','DAY'],
+  ['2026-07-27','NIGHT'],['2026-07-28','NIGHT'],
+  ['2026-08-03','CSHIFT'],['2026-08-04','CSHIFT'],['2026-08-05','CSHIFT'],
+  ['2026-08-17','NIGHT'],['2026-08-18','NIGHT'],['2026-08-19','NIGHT'],
+  ['2026-08-24','CSHIFT'],['2026-08-25','CSHIFT'],['2026-08-26','CSHIFT'],
+  ['2026-09-07','DAY'],['2026-09-08','DAY'],['2026-09-09','DAY'],
+  ['2026-09-14','NIGHT'],['2026-09-15','NIGHT'],['2026-09-16','NIGHT'],
+  ['2026-09-21','CSHIFT'],['2026-09-22','CSHIFT'],['2026-09-23','CSHIFT'],
+  ['2026-10-05','DAY'],['2026-10-06','DAY'],['2026-10-07','DAY'],
+  ['2026-10-12','NIGHT'],['2026-10-13','NIGHT'],['2026-10-14','NIGHT'],
+  ['2026-10-19','CSHIFT'],['2026-10-20','CSHIFT'],['2026-10-21','CSHIFT'],
+  ['2026-10-26','DAY'],['2026-10-27','DAY'],['2026-10-28','DAY'],
+  ['2026-11-09','NIGHT'],['2026-11-10','NIGHT'],['2026-11-11','NIGHT'],
+  ['2026-11-16','CSHIFT'],['2026-11-17','CSHIFT'],['2026-11-18','CSHIFT'],
+  ['2026-11-23','DAY'],['2026-11-24','DAY'],['2026-11-25','DAY'],
+  ['2026-11-30','NIGHT'],['2026-12-01','NIGHT'],['2026-12-02','NIGHT'],
+  ['2026-12-21','CSHIFT'],['2026-12-22','CSHIFT'],['2026-12-23','CSHIFT'],
+  ['2026-12-28','NIGHT'],['2026-12-29','NIGHT'],['2026-12-30','NIGHT'],
+  ['2027-01-11','DAY'],['2027-01-12','DAY'],['2027-01-13','DAY'],
+  ['2027-01-18','NIGHT'],['2027-01-19','NIGHT'],['2027-01-20','NIGHT'],
+  ['2027-01-25','CSHIFT'],['2027-01-26','CSHIFT'],['2027-01-27','CSHIFT'],
+  ['2027-02-01','DAY'],['2027-02-02','DAY'],['2027-02-03','DAY'],
 ]
-
-// One-time shifts (do not repeat)
-const ONE_OFF = [
-  { date: '2026-06-01', type: 'OT' },
-]
-
-function diffDays(aISO, bISO) {
-  return Math.round((new Date(aISO + 'T00:00:00Z') - new Date(bISO + 'T00:00:00Z')) / 86400000)
-}
 
 // Build concrete shift events covering [winStartISO, winEndISO].
 export function buildDefaultShiftEvents(winStartISO, winEndISO) {
   const out = []
-
-  // Which cycle index covers winStart? (can be negative)
-  const startOffset = diffDays(winStartISO, CYCLE_ANCHOR)
-  let firstCycle = Math.floor(startOffset / CYCLE_DAYS)
-  // step back one to be safe with cross-boundary night shifts
-  firstCycle -= 1
-
-  for (let c = firstCycle; ; c++) {
-    const cycleStart = addDaysISO(CYCLE_ANCHOR, c * CYCLE_DAYS)
-    if (cycleStart > winEndISO) break
-
-    for (const { off, type } of RECURRING) {
-      const date = addDaysISO(cycleStart, off)
-      if (date < winStartISO || date > winEndISO) continue
-      const ev = buildShiftEvent(date, type, 'default')
-      if (ev) out.push(ev)
-    }
+  for (const [date, type] of WORK_SHIFTS) {
+    if (date < winStartISO || date > winEndISO) continue
+    const ev = buildShiftEvent(date, type, 'default')
+    if (ev) out.push(ev)
   }
-
-  // One-off shifts within window
-  for (const { date, type } of ONE_OFF) {
-    if (date >= winStartISO && date <= winEndISO) {
-      const ev = buildShiftEvent(date, type, 'default')
-      if (ev) out.push(ev)
-    }
-  }
-
   return out
 }

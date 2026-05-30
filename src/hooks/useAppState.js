@@ -13,20 +13,30 @@ const isoOffset = (days) => new Date(Date.now() + days * 86400000).toISOString()
 const winStart = () => isoOffset(-WINDOW_PAST_DAYS)
 const winEnd   = () => isoOffset(WINDOW_FUTURE_DAYS)
 
-// Seed the embedded default roster on very first load (idempotent).
+// Bump when the embedded default roster changes — forces a one-time refresh on
+// existing devices (preserving manual edits). Source: ICS v6.9.
+const SEED_VERSION = 'v6.9-ics-1'
+
+const evISO = (e) => (e.start?.dateTime || e.start?.date || '').slice(0, 10)
+
+// Seed / migrate the embedded default roster (idempotent per SEED_VERSION).
 function initShiftState() {
   const stored = storage.getShiftEvents()
-  if (stored.seeded || (stored.events && stored.events.length)) {
-    return {
-      events: stored.events || [],
-      info: { count: stored.count ?? (stored.events?.length || 0), importedAt: stored.importedAt, lastFile: stored.lastFile },
-    }
+  const events = stored.events || []
+
+  if (stored.seedVersion === SEED_VERSION) {
+    return { events, info: { count: stored.count ?? events.length, importedAt: stored.importedAt, lastFile: stored.lastFile } }
   }
-  // First run — bake in the v6.9 work rotation
-  const events = buildDefaultShiftEvents(winStart(), winEnd())
-  const meta = { seeded: true, importedAt: Date.now(), lastFile: 'Built-in roster' }
-  storage.saveShiftEvents(events, meta)
-  return { events, info: { count: events.length, importedAt: meta.importedAt, lastFile: meta.lastFile } }
+
+  // (Re)seed defaults, preserving any manual single-day edits
+  const defaults = buildDefaultShiftEvents(winStart(), winEnd())
+  const manual = events.filter((e) => e.source === 'manual')
+  const manualDates = new Set(manual.map(evISO))
+  const merged = [...defaults.filter((d) => !manualDates.has(evISO(d))), ...manual]
+
+  const meta = { seeded: true, seedVersion: SEED_VERSION, importedAt: Date.now(), lastFile: 'Built-in roster (ICS v6.9)' }
+  storage.saveShiftEvents(merged, meta)
+  return { events: merged, info: { count: merged.length, importedAt: meta.importedAt, lastFile: meta.lastFile } }
 }
 
 export function useAppState() {
@@ -72,15 +82,15 @@ export function useAppState() {
   }, [])
 
   const clearShifts = useCallback(() => {
-    storage.clearShiftEvents()
+    storage.saveShiftEvents([], { seeded: true, seedVersion: SEED_VERSION, importedAt: null, lastFile: null })
     setShiftEvents([])
     setImportInfo({ count: 0, importedAt: null, lastFile: null })
   }, [])
 
-  // Restore the embedded default roster
+  // Restore the embedded default roster (discards manual edits)
   const restoreDefaultShifts = useCallback(() => {
     const events = buildDefaultShiftEvents(winStart(), winEnd())
-    persist(events, { importedAt: Date.now(), lastFile: 'Built-in roster' })
+    persist(events, { seedVersion: SEED_VERSION, importedAt: Date.now(), lastFile: 'Built-in roster (ICS v6.9)' })
     return events.length
   }, [])
 
