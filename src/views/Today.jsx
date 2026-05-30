@@ -132,15 +132,16 @@ function EodCard({ existing, onSave }) {
 export default function Today({ appState }) {
   const { programPosition, todayCheckin, saveCheckin, todayShift, baselines } = appState
 
-  // Initialise form from saved checkin or imported-calendar shift
+  // Initialise form from saved checkin or imported-calendar shift.
+  // OT / Dive auto-enable from the calendar when not already logged.
   const [form, setForm] = useState(() => ({
     hrv:           todayCheckin?.hrv           || null,
     sleep:         todayCheckin?.sleep         || null,
     rem:           todayCheckin?.rem           || null,
     rhr:           todayCheckin?.rhr           || null,
     shiftType:     todayCheckin?.shiftType     || todayShift?.type || null,
-    otOccurred:    todayCheckin?.otOccurred    || false,
-    diveDay:       todayCheckin?.diveDay       || false,
+    otOccurred:    todayCheckin?.otOccurred    ?? !!todayShift?.isOT,
+    diveDay:       todayCheckin?.diveDay       ?? (todayShift?.type === 'DIVE' || !!todayShift?.isDive),
     subjectiveFeel:todayCheckin?.subjectiveFeel|| null,
   }))
 
@@ -193,8 +194,10 @@ export default function Today({ appState }) {
       <div className="gcal-strip">
         <span className="gcal-detected">
           {todayShift?.type && todayShift.type !== 'OFF'
-            ? <>Calendar: <strong>{todayShift.type}</strong></>
-            : 'Calendar: OFF / no shift'}
+            ? <>Calendar: <strong>{todayShift.type}</strong>{todayShift.isOT ? ' +OT' : ''}</>
+            : todayShift?.isOT
+              ? <>Calendar: <strong>OT</strong></>
+              : 'Calendar: OFF / no shift'}
         </span>
         {SHIFT_OPTS.map(opt => (
           <button

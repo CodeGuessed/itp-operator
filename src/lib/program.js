@@ -51,17 +51,21 @@ export function getShiftType(events = [], dateStr) {
   const dayEvents = events.filter(
     e => (e.start?.dateTime || e.start?.date || '').slice(0, 10) === date
   )
+  const parsed = dayEvents.map(e => parseShiftFromEvent(e.summary))
+  const isOT = parsed.includes('OT')
+  const isDive = parsed.includes('DIVE')
 
-  // Check for dive day first (highest priority override)
-  const diveEvent = dayEvents.find(e => parseShiftFromEvent(e.summary) === 'DIVE')
-  if (diveEvent) return { type: 'DIVE', events: dayEvents }
+  // Dive day is the highest-priority override
+  if (isDive) return { type: 'DIVE', isOT, isDive, events: dayEvents }
 
-  // First shift-bearing event that day (OT is a modifier, not a shift type)
-  for (const e of dayEvents) {
-    const st = parseShiftFromEvent(e.summary)
-    if (st && st !== 'OT') return { type: st, events: dayEvents }
+  // First base shift (Day/Night/C). OT alone is a modifier, not a base shift,
+  // but it is surfaced via isOT so the OT toggle can auto-enable.
+  for (const st of parsed) {
+    if (st && st !== 'OT' && st !== 'DIVE') {
+      return { type: st, isOT, isDive, events: dayEvents }
+    }
   }
-  return { type: 'OFF', events: dayEvents }
+  return { type: 'OFF', isOT, isDive, events: dayEvents }
 }
 
 // Notification time by shift type (ISO time string HH:MM)
