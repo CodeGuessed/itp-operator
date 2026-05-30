@@ -40,6 +40,11 @@ export default defineConfig({
         navigateFallback: '/itp-operator/index.html',
         navigateFallbackDenylist: [/\/api\//],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Activate new service worker immediately and drop old caches so a
+        // deploy actually reaches the user without a manual hard-refresh.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,

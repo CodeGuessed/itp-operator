@@ -22,6 +22,11 @@ const PATTERN = [
   { off: 35, type: 'OT' },
 ]
 
+// One-time shifts that do NOT repeat (e.g. a single OT day)
+const ONE_OFF = [
+  { date: '2026-06-01', type: 'OT' },
+]
+
 function diffDays(aISO, bISO) {
   return Math.round((new Date(aISO + 'T00:00:00Z') - new Date(bISO + 'T00:00:00Z')) / 86400000)
 }
@@ -43,6 +48,13 @@ export function buildDefaultShiftEvents(winStartISO, winEndISO) {
       const ev = buildShiftEvent(date, type, 'default')
       if (ev) out.push(ev)
     }
+  }
+
+  // One-time shifts within the window
+  for (const { date, type } of ONE_OFF) {
+    if (date < winStartISO || date > winEndISO) continue
+    const ev = buildShiftEvent(date, type, 'default')
+    if (ev) out.push(ev)
   }
   return out
 }
