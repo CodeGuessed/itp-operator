@@ -68,7 +68,8 @@ export function parseShiftFromEvent(summary = '') {
   if (s.includes('[D]') || /\bDAY SHIFT\b/.test(s)) return 'DAY'
   if (s.includes('[C]') || /\[C\d+\]/.test(s) || /\bC-?\d*\s?SHIFT\b/.test(s)) return 'CSHIFT'
   if (/\bDIVE\b/.test(s)) return 'DIVE'
-  if (s.includes('[OT]') || /\bOVERTIME\b/.test(s)) return 'OT'
+  // Any entry beginning with [OT — [OT], [OT-N], [OT-C11], [OT-HUB], etc. — is work
+  if (/\[OT/.test(s) || /\bOVERTIME\b/.test(s)) return 'OT'
   return null
 }
 

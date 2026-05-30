@@ -9,13 +9,17 @@ import { buildShiftEvent } from '../lib/shiftCodes.js'
 const WINDOW_PAST_DAYS = 30
 const WINDOW_FUTURE_DAYS = 730
 
+const PROGRAM_START_ISO = '2026-05-25'   // calendar never starts before this
 const isoOffset = (days) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10)
-const winStart = () => isoOffset(-WINDOW_PAST_DAYS)
+const winStart = () => {
+  const w = isoOffset(-WINDOW_PAST_DAYS)
+  return w < PROGRAM_START_ISO ? PROGRAM_START_ISO : w
+}
 const winEnd   = () => isoOffset(WINDOW_FUTURE_DAYS)
 
 // Bump when the embedded default roster changes — forces a one-time refresh on
-// existing devices (preserving manual edits). Source: ICS v6.9.
-const SEED_VERSION = 'v6.9-rotation-2'
+// existing devices (preserving manual edits).
+const SEED_VERSION = 'v6.9-rotation-3'
 
 const evISO = (e) => (e.start?.dateTime || e.start?.date || '').slice(0, 10)
 
