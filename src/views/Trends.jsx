@@ -8,16 +8,33 @@ import {
 import { PHASES, CYCLE_STARTS, PROGRAM_START } from '../lib/program.js'
 import { storage } from '../lib/storage.js'
 
-const AX = { fill: '#8888aa', fontSize: 10, fontFamily: 'Space Mono, monospace' }
+// Obsidian Terminal palette for charts
+const C = {
+  teal:   '#00e5b0',
+  amber:  '#ffaa44',
+  violet: '#cc88ff',
+  red:    '#ff5f6d',
+  grid:   '#242830',
+  muted:  '#4a5060',
+}
+const AX = { fill: C.muted, fontSize: 9, fontFamily: 'DM Mono, monospace' }
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '8px 10px', fontSize: '0.75rem', fontFamily: 'Space Mono, monospace' }}>
-      <div style={{ color: 'var(--text2)', marginBottom: 4 }}>{label}</div>
+    <div style={{
+      background: '#181b22',
+      border: '1px solid #242830',
+      borderRadius: 6,
+      padding: '7px 11px',
+      fontSize: 11,
+      fontFamily: 'DM Mono, monospace',
+      fontVariantLigatures: 'none',
+    }}>
+      <div style={{ color: C.muted, marginBottom: 4, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.12em' }}>{label}</div>
       {payload.map((p, i) => (
-        <div key={i} style={{ color: p.color || 'var(--text)' }}>
-          {p.name}: {typeof p.value === 'number' ? p.value.toFixed(1) : p.value ?? '—'}
+        <div key={i} style={{ color: p.color || '#e8e4dc', marginBottom: 1 }}>
+          {p.name}: <strong>{typeof p.value === 'number' ? p.value.toFixed(1) : (p.value ?? '—')}</strong>
         </div>
       ))}
     </div>
@@ -113,58 +130,74 @@ export default function Trends({ appState }) {
     <div>
       <ProgramTimeline programPosition={programPosition} />
 
+      {/* HRV */}
       <div className="chart-container">
         <div className="chart-title">HRV — Weekly Average (ms)</div>
         <ResponsiveContainer width="100%" height={160}>
-          <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" />
-            <XAxis dataKey="week" tick={AX} />
-            <YAxis domain={[40, 90]} tick={AX} />
+          <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
+            <defs>
+              <linearGradient id="hrvGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor={C.teal} stopOpacity={0.22} />
+                <stop offset="95%" stopColor={C.teal} stopOpacity={0.01} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
+            <XAxis dataKey="week" tick={AX} axisLine={false} tickLine={false} />
+            <YAxis domain={[40, 90]} tick={AX} axisLine={false} tickLine={false} />
             <Tooltip content={<CustomTooltip />} />
-            <ReferenceLine y={55} stroke="#ef4444" strokeDasharray="3 3" strokeWidth={1} />
-            <ReferenceLine y={65} stroke="#eab308" strokeDasharray="3 3" strokeWidth={1} />
-            <Area type="monotone" dataKey="hrv" name="HRV" stroke="#6366f1" fill="rgba(99,102,241,0.15)" strokeWidth={2} connectNulls dot={{ fill: '#6366f1', r: 3 }} />
+            <ReferenceLine y={55} stroke={C.red}   strokeDasharray="4 3" strokeWidth={1} />
+            <ReferenceLine y={65} stroke={C.amber} strokeDasharray="4 3" strokeWidth={1} />
+            <Area type="monotone" dataKey="hrv" name="HRV" stroke={C.teal} fill="url(#hrvGrad)" strokeWidth={2} connectNulls dot={{ fill: C.teal, r: 3, strokeWidth: 0 }} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
 
+      {/* Sleep */}
       <div className="chart-container">
         <div className="chart-title">Sleep Duration — Weekly Average (hrs)</div>
         <ResponsiveContainer width="100%" height={160}>
-          <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" />
-            <XAxis dataKey="week" tick={AX} />
-            <YAxis domain={[0, 10]} tick={AX} />
+          <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
+            <XAxis dataKey="week" tick={AX} axisLine={false} tickLine={false} />
+            <YAxis domain={[0, 10]} tick={AX} axisLine={false} tickLine={false} />
             <Tooltip content={<CustomTooltip />} />
-            <ReferenceLine y={7} stroke="#22c55e" strokeDasharray="3 3" strokeWidth={1.5} label={{ value: '7h', fill: '#22c55e', fontSize: 10 }} />
-            <Bar dataKey="sleep" name="Sleep" fill="#6366f1" opacity={0.8} radius={0} />
+            <ReferenceLine y={7} stroke={C.teal} strokeDasharray="4 3" strokeWidth={1} label={{ value: '7h', fill: C.teal, fontSize: 9, fontFamily: 'DM Mono, monospace' }} />
+            <Bar dataKey="sleep" name="Sleep (hrs)" fill={C.violet} opacity={0.65} radius={2} />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
+      {/* Weight */}
       <div className="chart-container">
         <div className="chart-title">Weight Trajectory (kg)</div>
         <ResponsiveContainer width="100%" height={160}>
-          <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" />
-            <XAxis dataKey="week" tick={AX} />
-            <YAxis tick={AX} />
+          <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
+            <defs>
+              <linearGradient id="wgtGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor={C.amber} stopOpacity={0.18} />
+                <stop offset="95%" stopColor={C.amber} stopOpacity={0.01} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
+            <XAxis dataKey="week" tick={AX} axisLine={false} tickLine={false} />
+            <YAxis tick={AX} axisLine={false} tickLine={false} />
             <Tooltip content={<CustomTooltip />} />
-            <Line type="monotone" dataKey="weight" name="Weight" stroke="#6366f1" strokeWidth={2} connectNulls dot={{ fill: '#6366f1', r: 3 }} />
+            <Line type="monotone" dataKey="weight" name="Weight (kg)" stroke={C.amber} strokeWidth={2} connectNulls dot={{ fill: C.amber, r: 3, strokeWidth: 0 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
+      {/* Adherence */}
       <div className="chart-container">
         <div className="chart-title">Session Adherence (%)</div>
         <ResponsiveContainer width="100%" height={140}>
-          <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" />
-            <XAxis dataKey="week" tick={AX} />
-            <YAxis domain={[0, 100]} tick={AX} />
+          <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
+            <XAxis dataKey="week" tick={AX} axisLine={false} tickLine={false} />
+            <YAxis domain={[0, 100]} tick={AX} axisLine={false} tickLine={false} />
             <Tooltip content={<CustomTooltip />} />
-            <ReferenceLine y={100} stroke="#22c55e" strokeDasharray="3 3" strokeWidth={1} />
-            <Bar dataKey="adherence" name="Adherence %" fill="#22c55e" opacity={0.7} radius={0} />
+            <ReferenceLine y={100} stroke={C.teal} strokeDasharray="4 3" strokeWidth={1} />
+            <Bar dataKey="adherence" name="Adherence %" fill={C.teal} opacity={0.6} radius={2} />
           </BarChart>
         </ResponsiveContainer>
       </div>
