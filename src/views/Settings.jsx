@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { buildAuthUrl, isTokenValid, REDIRECT_URI } from '../lib/gcal.js'
+import { buildAuthUrl, previewAuthUrl, isTokenValid, REDIRECT_URI } from '../lib/gcal.js'
 import { storage } from '../lib/storage.js'
 
 const SHIFT_NOTIF_LABELS = [
@@ -37,7 +37,7 @@ export default function Settings({ appState }) {
   async function handlePreviewAuthUrl() {
     const id = gcalClientId.trim()
     if (!id) { alert('Enter a Client ID first.'); return }
-    const url = await buildAuthUrl(id)
+    const url = await previewAuthUrl(id)  // no side effects — does not touch stored verifier
     setAuthUrlPreview(url)
   }
 

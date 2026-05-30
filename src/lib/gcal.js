@@ -3,12 +3,11 @@
 const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly'
 const CACHE_KEY = 'itp_gcal_cache'
 const CACHE_TTL = 6 * 60 * 60 * 1000 // 6 hours
+// localStorage (not sessionStorage) — survives iOS PWA backgrounding during redirect
 const PKCE_KEY = 'itp_pkce_verifier'
 
-// Computed once at import — must match the registered redirect URI exactly
 export const REDIRECT_URI = (() => {
   const { origin, pathname } = window.location
-  // Normalise to the app root regardless of current path
   const base = pathname.startsWith('/itp-operator') ? '/itp-operator/' : '/'
   return origin + base
 })()
@@ -22,7 +21,6 @@ export function getGCalClientId() {
 function generateVerifier() {
   const arr = new Uint8Array(32)
   crypto.getRandomValues(arr)
-  // base64url, no padding — valid chars only, length always 43
   return btoa(Array.from(arr, b => String.fromCharCode(b)).join(''))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
@@ -34,28 +32,37 @@ async function deriveChallenge(verifier) {
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-// ── Auth URL (async — must await in caller) ───────────────────────────────────
-
-export async function buildAuthUrl(clientId) {
-  const verifier = generateVerifier()
-  const challenge = await deriveChallenge(verifier)
-  sessionStorage.setItem(PKCE_KEY, verifier)
-
-  // Build manually to avoid double-encoding of base64url chars by URLSearchParams
+function buildUrlFromChallenge(clientId, challenge) {
   const qs = [
     `client_id=${encodeURIComponent(clientId)}`,
     `redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
     `response_type=code`,
     `scope=${encodeURIComponent(SCOPES)}`,
-    `code_challenge=${challenge}`,           // already URL-safe, do not encode again
+    `code_challenge=${challenge}`,
     `code_challenge_method=S256`,
     `prompt=select_account`,
   ].join('&')
-
   return `https://accounts.google.com/o/oauth2/v2/auth?${qs}`
 }
 
-// ── Callback parsing — code in ?code=, error in ?error= ──────────────────────
+// ── Auth URL — stores verifier in localStorage, survives iOS background ───────
+
+export async function buildAuthUrl(clientId) {
+  const verifier = generateVerifier()
+  const challenge = await deriveChallenge(verifier)
+  localStorage.setItem(PKCE_KEY, verifier)   // localStorage, not sessionStorage
+  return buildUrlFromChallenge(clientId, challenge)
+}
+
+// ── Preview URL — no side effects, does not touch stored verifier ─────────────
+
+export async function previewAuthUrl(clientId) {
+  const verifier = generateVerifier()
+  const challenge = await deriveChallenge(verifier)
+  return buildUrlFromChallenge(clientId, challenge)
+}
+
+// ── Callback parsing ──────────────────────────────────────────────────────────
 
 export function parseCodeFromUrl() {
   const params = new URLSearchParams(window.location.search)
@@ -70,30 +77,27 @@ export function parseCodeFromUrl() {
   return code
 }
 
-// ── Token exchange — PKCE, no client_secret required ─────────────────────────
+// ── Token exchange ────────────────────────────────────────────────────────────
 
 export async function exchangeCodeForToken(code, clientId) {
-  const verifier = sessionStorage.getItem(PKCE_KEY)
-  sessionStorage.removeItem(PKCE_KEY)
-  if (!verifier) throw new Error('PKCE verifier missing — restart the auth flow.')
-
-  const body = new URLSearchParams({
-    code,
-    client_id: clientId,
-    redirect_uri: REDIRECT_URI,
-    grant_type: 'authorization_code',
-    code_verifier: verifier,
-  })
+  const verifier = localStorage.getItem(PKCE_KEY)
+  localStorage.removeItem(PKCE_KEY)
+  if (!verifier) throw new Error('PKCE verifier missing — tap Connect again to restart the auth flow.')
 
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
+    body: new URLSearchParams({
+      code,
+      client_id: clientId,
+      redirect_uri: REDIRECT_URI,
+      grant_type: 'authorization_code',
+      code_verifier: verifier,
+    }).toString(),
   })
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    // Surface the raw Google error for diagnosis
     throw new Error(err.error_description || err.error || `Token exchange ${res.status}`)
   }
 
