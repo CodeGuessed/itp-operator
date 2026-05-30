@@ -1,12 +1,14 @@
 // hooks/useAppState.js
 import { useState, useCallback } from 'react'
 import { storage } from '../lib/storage.js'
-import { parseICS } from '../lib/ics.js'
+import { parseICS, expandEvents } from '../lib/ics.js'
 import { getProgramPosition, getShiftType, parseShiftFromEvent } from '../lib/program.js'
 
-// Keep imported shifts within a sensible window so localStorage stays small
+// Expand recurring shifts this far ahead so a 6-week-repeating roster stays
+// populated for years without re-importing. Sparse (~20 shifts / 42 days),
+// so even +2 years is a few hundred small records.
 const WINDOW_PAST_DAYS = 30
-const WINDOW_FUTURE_DAYS = 150
+const WINDOW_FUTURE_DAYS = 730
 
 export function useAppState() {
   const [settings, setSettingsState] = useState(storage.getSettings)
@@ -28,16 +30,17 @@ export function useAppState() {
   const importIcs = useCallback((text, fileName = '') => {
     const all = parseICS(text)
     const now = Date.now()
-    const winStart = now - WINDOW_PAST_DAYS * 86400000
-    const winEnd = now + WINDOW_FUTURE_DAYS * 86400000
+    const winStartISO = new Date(now - WINDOW_PAST_DAYS * 86400000).toISOString().slice(0, 10)
+    const winEndISO = new Date(now + WINDOW_FUTURE_DAYS * 86400000).toISOString().slice(0, 10)
 
-    // Keep only shift-bearing events within the window
-    const relevant = all.filter((e) => {
+    // Expand recurring rules into concrete occurrences across the window…
+    const expanded = expandEvents(all, winStartISO, winEndISO)
+
+    // …then keep only shift-bearing events inside the window
+    const relevant = expanded.filter((e) => {
       if (!parseShiftFromEvent(e.summary)) return false
-      const ds = e.start?.dateTime || e.start?.date
-      if (!ds) return false
-      const t = new Date(ds).getTime()
-      return !Number.isNaN(t) && t >= winStart && t <= winEnd
+      const ds = (e.start?.dateTime || e.start?.date || '').slice(0, 10)
+      return ds && ds >= winStartISO && ds <= winEndISO
     })
 
     // Merge with existing imports, dedupe by summary + start-date

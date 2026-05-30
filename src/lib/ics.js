@@ -30,6 +30,68 @@ function parseDt(rawKey, value) {
   return { dateTime: `${y}-${mo}-${d}T${h}:${mi}:${s}${z ? 'Z' : ''}` }
 }
 
+// Shift an ISO date (or datetime) by a whole number of days, preserving the
+// time-of-day. Uses UTC date math so DST never shifts the calendar day.
+function shiftIsoDays(iso, days) {
+  if (!days) return iso
+  const [d, t] = iso.split('T')
+  const dt = new Date(d + 'T00:00:00Z')
+  dt.setUTCDate(dt.getUTCDate() + days)
+  const nd = dt.toISOString().slice(0, 10)
+  return t ? `${nd}T${t}` : nd
+}
+
+// Expand a single (possibly recurring) event into concrete occurrences whose
+// START date falls within [winStartISO, winEndISO]. Supports the common
+// FREQ=WEEKLY / FREQ=DAILY rules with INTERVAL, COUNT and UNTIL — enough for a
+// fixed shift rotation (e.g. "every 6 weeks" = WEEKLY;INTERVAL=6). Unsupported
+// frequencies (MONTHLY/YEARLY) fall back to the single base occurrence.
+export function expandEvent(ev, winStartISO, winEndISO, cap = 1000) {
+  if (!ev.rrule) return [ev]
+
+  const m = {}
+  for (const part of ev.rrule.split(';')) {
+    const [k, v] = part.split('=')
+    if (k) m[k.toUpperCase()] = v
+  }
+  const freq = (m.FREQ || '').toUpperCase()
+  const interval = parseInt(m.INTERVAL || '1', 10) || 1
+  const stepDays = freq === 'WEEKLY' ? 7 * interval : freq === 'DAILY' ? interval : 0
+  if (!stepDays) return [ev]
+
+  const count = m.COUNT ? parseInt(m.COUNT, 10) : Infinity
+  let untilISO = null
+  if (m.UNTIL) {
+    const u = m.UNTIL.replace(/[TZ].*$/, '')
+    untilISO = `${u.slice(0, 4)}-${u.slice(4, 6)}-${u.slice(6, 8)}`
+  }
+
+  const startIso = ev.start.dateTime || ev.start.date
+  const startKind = ev.start.dateTime ? 'dateTime' : 'date'
+  const endIso = ev.end?.dateTime || ev.end?.date || null
+  const endKind = ev.end?.dateTime ? 'dateTime' : ev.end?.date ? 'date' : null
+
+  const out = []
+  for (let k = 0; k < count && k < cap; k++) {
+    const s = shiftIsoDays(startIso, k * stepDays)
+    const sd = s.slice(0, 10)
+    if (untilISO && sd > untilISO) break
+    if (sd > winEndISO) break
+    if (sd >= winStartISO) {
+      const occ = { ...ev, start: { [startKind]: s } }
+      if (endIso) occ.end = { [endKind]: shiftIsoDays(endIso, k * stepDays) }
+      delete occ.rrule
+      out.push(occ)
+    }
+  }
+  return out
+}
+
+// Expand a list of events (recurring or not) over a window.
+export function expandEvents(events, winStartISO, winEndISO) {
+  return events.flatMap(e => expandEvent(e, winStartISO, winEndISO))
+}
+
 export function parseICS(text) {
   if (!text || typeof text !== 'string') return []
 
