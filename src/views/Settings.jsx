@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { storage } from '../lib/storage.js'
+import ShiftCalendar from '../components/ShiftCalendar.jsx'
 
 const SHIFT_NOTIF_LABELS = [
   { key: 'day',    label: 'DAY shift alarm'   },
@@ -9,7 +10,11 @@ const SHIFT_NOTIF_LABELS = [
 ]
 
 export default function Settings({ appState }) {
-  const { settings, saveSettings, baselines, saveBaselines, importIcs, clearShifts, importInfo } = appState
+  const {
+    settings, saveSettings, baselines, saveBaselines,
+    importIcs, clearShifts, importInfo, restoreDefaultShifts,
+    shiftEvents, setShiftForDate,
+  } = appState
 
   const [anthropicKey,  setAnthropicKey]  = useState(settings.anthropicKey  || '')
   const [localBaselines,setLocalBaselines]= useState({ ...baselines })
@@ -17,6 +22,7 @@ export default function Settings({ appState }) {
   const [clearConfirm,  setClearConfirm]  = useState(false)
   const [saveMsg,       setSaveMsg]       = useState('')
   const [importMsg,     setImportMsg]     = useState(null)
+  const [calOpen,       setCalOpen]       = useState(false)
   const fileInputRef = useRef(null)
 
   function flash(msg = 'Saved') { setSaveMsg(msg); setTimeout(() => setSaveMsg(''), 2500) }
@@ -45,7 +51,12 @@ export default function Settings({ appState }) {
 
   function handleClearShifts() {
     clearShifts()
-    setImportMsg({ ok: true, text: 'Imported shifts cleared.' })
+    setImportMsg({ ok: true, text: 'All shifts cleared.' })
+  }
+
+  function handleRestoreDefault() {
+    const n = restoreDefaultShifts()
+    setImportMsg({ ok: true, text: `Built-in roster restored (${n} shifts).` })
   }
 
   function handleSaveBaselines() {
@@ -118,36 +129,37 @@ export default function Settings({ appState }) {
         <button className="btn btn-full btn-primary" onClick={handleSaveApiKey}>Save API Key</button>
       </div>
 
-      {/* Shift Calendar Import (.ics) */}
+      {/* Shift Calendar */}
       <div className="card">
-        <div className="card-title">Shift Calendar (.ics import)</div>
+        <div className="card-title">Shift Calendar</div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <span className={`status-dot ${importInfo.count > 0 ? 'green' : 'red'}`} />
-          <span style={{ fontSize: '0.8rem', fontFamily: 'Space Mono, monospace' }}>
-            {importInfo.count > 0
-              ? `${importInfo.count} shifts loaded`
-              : 'No shifts imported'}
+          <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace' }}>
+            {importInfo.count > 0 ? `${importInfo.count} shifts loaded` : 'No shifts'}
           </span>
         </div>
 
         {importInfo.importedAt && (
-          <div style={{ fontSize: '0.7rem', color: 'var(--text2)', marginBottom: 10, fontFamily: 'Space Mono, monospace' }}>
-            Last import: {new Date(importInfo.importedAt).toLocaleDateString('en-NZ')} {importInfo.lastFile ? `· ${importInfo.lastFile}` : ''}
+          <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 10, fontFamily: 'DM Mono, monospace' }}>
+            Source: {importInfo.lastFile || '—'} · {new Date(importInfo.importedAt).toLocaleDateString('en-NZ')}
           </div>
         )}
 
         {importMsg && (
-          <div style={{ padding: '8px 10px', border: `1px solid var(--${importMsg.ok ? 'green' : 'red'})`, color: `var(--${importMsg.ok ? 'green' : 'red'})`, fontSize: '0.72rem', marginBottom: 12, fontFamily: 'Space Mono, monospace', lineHeight: 1.5 }}>
+          <div style={{ padding: '8px 10px', borderRadius: 6, border: `1px solid var(--${importMsg.ok ? 'teal' : 'red'})`, color: `var(--${importMsg.ok ? 'teal' : 'red'})`, fontSize: 11, marginBottom: 12, fontFamily: 'DM Mono, monospace', lineHeight: 1.5 }}>
             {importMsg.text}
           </div>
         )}
 
-        <div style={{ fontSize: '0.72rem', color: 'var(--text2)', marginBottom: 12, lineHeight: 1.5 }}>
-          Export your work calendar as an <span className="mono">.ics</span> file and load it here. Shifts are detected from event titles
-          (<span className="mono">[N]</span>=Night, <span className="mono">[D]</span>=Day, <span className="mono">[C]</span>/C-Shift, Dive, <span className="mono">[OT]</span>).
-          Re-import anytime to refresh; entries merge and de-duplicate.
+        <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 12, lineHeight: 1.55 }}>
+          Your 6-week rotation is built in. Open the calendar to add, change, or remove any shift —
+          changes save instantly and the engine re-reads them.
         </div>
+
+        <button className="btn btn-primary btn-full" style={{ marginBottom: 8 }} onClick={() => setCalOpen(true)}>
+          Open Shift Calendar
+        </button>
 
         <input
           ref={fileInputRef}
@@ -158,14 +170,27 @@ export default function Settings({ appState }) {
         />
 
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" style={{ flex: 2 }} onClick={() => fileInputRef.current?.click()}>
-            Import .ics File
+          <button className="btn" style={{ flex: 1, fontSize: 10 }} onClick={() => fileInputRef.current?.click()}>
+            Import .ics
+          </button>
+          <button className="btn" style={{ flex: 1, fontSize: 10 }} onClick={handleRestoreDefault}>
+            Restore Roster
           </button>
           {importInfo.count > 0 && (
-            <button className="btn btn-danger" style={{ flex: 1 }} onClick={handleClearShifts}>Clear</button>
+            <button className="btn btn-danger" style={{ flex: 1, fontSize: 10 }} onClick={handleClearShifts}>
+              Clear
+            </button>
           )}
         </div>
       </div>
+
+      {calOpen && (
+        <ShiftCalendar
+          shiftEvents={shiftEvents}
+          onSet={setShiftForDate}
+          onClose={() => setCalOpen(false)}
+        />
+      )}
 
       {/* Baselines */}
       <div className="card">
@@ -232,7 +257,7 @@ export default function Settings({ appState }) {
       </div>
 
       <div style={{ padding: '8px 0', fontSize: '0.7rem', color: 'var(--text2)', fontFamily: 'Space Mono, monospace' }}>
-        ITP Operator v1.0 · ITP v6.7 · Program start 2026-05-27
+        ITP Operator v1.1 · ITP v6.9 · Cycle start 2026-05-25
       </div>
     </div>
   )

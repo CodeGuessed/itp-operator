@@ -1,23 +1,31 @@
-// lib/program.js — ITP v6.7 program logic
+// lib/program.js — ITP v6.9 program logic
 
-export const PROGRAM_START = new Date('2026-05-27')
+// v6.9: cycle start corrected to May 25, 2026 (was May 27). 42 weeks → wedding Mar 15 2027.
+export const PROGRAM_START = new Date('2026-05-25')
 export const PROGRAM_END = new Date('2027-03-15')
 
 export const PHASES = [
-  { name: 'BUILD', start: '2026-05-27', end: '2026-09-29', calories: 3100, protein: [180, 200], cycles: [1, 2, 3] },
-  { name: 'LEAN',  start: '2026-09-30', end: '2027-02-02', calories: 2700, protein: [200, 210], cycles: [4, 5, 6] },
-  { name: 'POLISH',start: '2027-02-03', end: '2027-03-15', calories: 3000, protein: [200, 210], cycles: [7] },
+  { name: 'BUILD',  start: '2026-05-25', end: '2026-09-29', calories: 3100, protein: [180, 200], cycles: [1, 2, 3], model: 'Linear Progression' },
+  { name: 'LEAN',   start: '2026-09-30', end: '2027-02-02', calories: 2700, protein: [200, 210], cycles: [4, 5, 6], model: 'Texas Method → 5/3/1' },
+  { name: 'POLISH', start: '2027-02-03', end: '2027-03-15', calories: 3000, protein: [190, 200], cycles: [7],       model: 'Maintain' },
 ]
 
+// 6-week (42-day) cycles anchored to May 25, 2026
 export const CYCLE_STARTS = {
-  1: '2026-05-27', 2: '2026-07-08', 3: '2026-08-19',
-  4: '2026-09-30', 5: '2026-11-11', 6: '2026-12-23',
-  7: '2027-02-03',
+  1: '2026-05-25', 2: '2026-07-06', 3: '2026-08-17',
+  4: '2026-09-28', 5: '2026-11-09', 6: '2026-12-21',
+  7: '2027-02-01',
+}
+
+// Periodization model by cycle (v6.9)
+export const CYCLE_MODEL = {
+  1: 'Linear', 2: 'Linear', 3: 'Linear',
+  4: 'Texas Method', 5: 'Texas Method', 6: '5/3/1',
+  7: 'Maintain',
 }
 
 export function getProgramPosition(date = new Date()) {
   const d = typeof date === 'string' ? new Date(date) : date
-  const phase = PHASES.find(p => d >= new Date(p.start) && d <= new Date(p.end)) || PHASES[0]
 
   let cycle = 1, week = 1
   const entries = Object.entries(CYCLE_STARTS).sort((a, b) => new Date(a[1]) - new Date(b[1]))
@@ -28,7 +36,11 @@ export function getProgramPosition(date = new Date()) {
   const daysSince = Math.floor((d - cycleStart) / (1000 * 60 * 60 * 24))
   week = Math.min(6, Math.floor(daysSince / 7) + 1)
 
-  return { phase: phase.name, cycle, week, calories: phase.calories, protein: phase.protein }
+  // v6.9: phase follows cycle number (BUILD=1-3, LEAN=4-6, POLISH=7),
+  // not calendar date — keeps phase/cycle consistent at boundaries.
+  const phase = PHASES.find(p => p.cycles.includes(cycle)) || PHASES[0]
+
+  return { phase: phase.name, cycle, week, calories: phase.calories, protein: phase.protein, model: phase.model }
 }
 
 // Event-title parsing — active shift codes are bracketed: [N] [D] [C]/[C##] [OT].

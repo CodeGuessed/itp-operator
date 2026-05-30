@@ -58,9 +58,14 @@ export const storage = {
     return all.slice(-n)
   },
 
-  // Imported shift events (.ics) — persistent, no expiry
-  getShiftEvents: () => get(KEYS.SHIFT_EVENTS) || { events: [], importedAt: null, count: 0, lastFile: null },
-  saveShiftEvents: (events, meta = {}) =>
-    set(KEYS.SHIFT_EVENTS, { events, importedAt: Date.now(), count: events.length, ...meta }),
-  clearShiftEvents: () => localStorage.removeItem(KEYS.SHIFT_EVENTS),
+  // Shift events (default roster + .ics import + manual edits) — persistent
+  getShiftEvents: () => get(KEYS.SHIFT_EVENTS) || { events: [], importedAt: null, count: 0, lastFile: null, seeded: false },
+  saveShiftEvents: (events, meta = {}) => {
+    const prev = get(KEYS.SHIFT_EVENTS) || {}
+    set(KEYS.SHIFT_EVENTS, { ...prev, events, count: events.length, ...meta })
+  },
+  clearShiftEvents: () => {
+    // Keep the seeded flag so cleared defaults don't silently return
+    set(KEYS.SHIFT_EVENTS, { events: [], importedAt: null, count: 0, lastFile: null, seeded: true })
+  },
 }
