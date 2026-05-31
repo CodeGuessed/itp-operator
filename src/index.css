@@ -36,6 +36,7 @@
   /* Layout */
   --nav-height:  60px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top:    env(safe-area-inset-top, 0px);
   --card-radius: 10px;
   --card-pad:    20px 22px;
   --gap:         14px;
@@ -75,7 +76,8 @@ body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 16px 16px calc(var(--nav-height) + var(--safe-bottom) + 16px);
+  /* Top inset clears the notch/status bar in standalone mode */
+  padding: calc(16px + var(--safe-top)) 16px calc(var(--nav-height) + var(--safe-bottom) + 16px);
   -webkit-overflow-scrolling: touch;
 }
 
@@ -239,6 +241,12 @@ h3 { font-size: 0.8rem; font-weight: 700; }
 }
 .btn:active { opacity: 0.75; }
 .btn-full { width: 100%; }
+/* App-like feel: no text selection or callout on long-press */
+.btn, .nav-tab, .ocd-toggle, .collapsible-header {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
 
 .btn-primary { border-color: var(--violet); color: var(--violet); }
 .btn-primary:hover, .btn-primary.active { background: rgba(204,136,255,0.1); }
@@ -477,7 +485,8 @@ h3 { font-size: 0.8rem; font-weight: 700; }
   border-radius: 6px;
   color: var(--text);
   font-family: 'DM Mono', monospace;
-  font-size: 13px;
+  /* 16px minimum — iOS Safari zooms the page on focus below this */
+  font-size: 16px;
   font-weight: 400;
   padding: 9px 12px;
   outline: none;
